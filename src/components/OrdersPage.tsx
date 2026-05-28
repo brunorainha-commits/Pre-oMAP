@@ -91,7 +91,7 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
     // Toggle state for showing original raw data
     const [showRaw, setShowRaw] = useState(false);
 
-    const itemsSum = items.reduce((sum, item) => sum + item.total_price, 0);
+    const itemsSum = items.reduce((sum, item) => sum + item.commercial_total_price, 0);
 
     return (
       <div className="space-y-6 animate-fade-in pb-12 max-w-5xl mx-auto">
@@ -238,10 +238,10 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
                       <tr key={idx} className="hover:bg-slate-900/10">
                         <td className="py-2.5 px-3 font-mono text-[10px] text-slate-400">{item.product_code || 'S/C'}</td>
                         <td className="py-2.5 px-3 font-medium text-slate-200">{item.description}</td>
-                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{item.quantity}</td>
-                        <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{item.unit || 'UN'}</td>
-                        <td className="py-2.5 px-3 text-right text-slate-300">R$ {item.unit_price.toFixed(2)}</td>
-                        <td className="py-2.5 px-3 text-right font-outfit text-white font-bold">R$ {item.total_price.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{item.commercial_quantity}</td>
+                        <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{item.commercial_unit || 'UN'}</td>
+                        <td className="py-2.5 px-3 text-right text-slate-300">R$ {item.commercial_unit_price.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right font-outfit text-white font-bold">R$ {item.commercial_total_price.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>

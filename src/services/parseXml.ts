@@ -139,7 +139,12 @@ export function parseXmlInvoice(xmlText: string, fileName: string): NormalizedIn
       qTrib,
       vUnTrib,
       
-      discount: itemDiscount > 0 ? itemDiscount : null
+      discount: itemDiscount > 0 ? itemDiscount : null,
+      product_id: null,
+      internal_unit: unit || 'UN',
+      internal_quantity: quantity,
+      internal_unit_price: unitPrice,
+      units_per_package: 1
     });
   });
 
@@ -163,6 +168,8 @@ export function parseXmlInvoice(xmlText: string, fileName: string): NormalizedIn
     shipping_amount: shippingAmount > 0 ? shippingAmount : null,
     status: 'review',
     items,
+    invoice_series: null,
+    customer_id: null,
     raw_xml: xmlText,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()

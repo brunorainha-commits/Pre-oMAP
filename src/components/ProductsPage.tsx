@@ -87,13 +87,13 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
       return;
     }
     if (confirm("Deseja realmente excluir este produto?")) {
-      const deleted = db.deleteProduct(id);
-      if (deleted) {
+      try {
+        db.deleteProduct(id);
         alert("Produto excluído com sucesso.");
         if (selectedProductId === id) setSelectedProductId(null);
         loadProductsList();
-      } else {
-        alert("Não é possível excluir este produto pois ele está associado a pedidos existentes.");
+      } catch (error: any) {
+        alert(`Não foi possível excluir o produto. ${error.message}`);
       }
     }
   };
@@ -112,6 +112,14 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
       category: formCategory || 'Não Categorizado',
       brand: formBrand || null,
       default_commercial_unit: formUnit || 'UN',
+      default_internal_unit: editingProduct ? editingProduct.default_internal_unit : null,
+      units_per_package: editingProduct ? editingProduct.units_per_package : 1,
+      last_package_price: editingProduct ? editingProduct.last_package_price : 0,
+      last_internal_unit_price: editingProduct ? editingProduct.last_internal_unit_price : 0,
+      average_package_price: editingProduct ? editingProduct.average_package_price : 0,
+      average_internal_unit_price: editingProduct ? editingProduct.average_internal_unit_price : 0,
+      min_internal_unit_price: editingProduct ? editingProduct.min_internal_unit_price : 0,
+      max_internal_unit_price: editingProduct ? editingProduct.max_internal_unit_price : 0,
       ncm: formNcm || null,
       notes: formNotes || null,
       first_seen_at: editingProduct ? editingProduct.first_seen_at : null,
@@ -156,7 +164,6 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
     }
 
     const priceHistory = db.getPriceHistoryByProduct(prod.id);
-    const unitsInBox = prod.units_per_package || 1;
     
     // Calculate stats
     const totalQty = priceHistory.reduce((sum, ph) => sum + ph.internal_quantity, 0);
@@ -276,7 +283,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Unidade de Medida:</span>
-                <span className="font-bold text-brand-400">{prod.unit || 'UN'}</span>
+                <span className="font-bold text-brand-400">{prod.default_commercial_unit || 'UN'}</span>
               </div>
               <div className="flex flex-col gap-1 border-t border-slate-800 pt-3 mt-1">
                 <span className="text-slate-500">Anotações Comerciais:</span>
@@ -370,7 +377,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                     {buyers.map((buyer, idx) => (
                       <tr key={idx} className="hover:bg-slate-900/10">
                         <td className="py-2.5 px-3 font-medium text-slate-200">{buyer.name}</td>
-                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{buyer.qty} {prod.unit}</td>
+                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{buyer.qty} {prod.default_commercial_unit || 'UN'}</td>
                         <td className="py-2.5 px-3 text-right text-slate-400">R$ {buyer.minP.toFixed(2)}</td>
                         <td className="py-2.5 px-3 text-right font-outfit text-white font-bold">R$ {buyer.lastP.toFixed(2)}</td>
                         <td className="py-2.5 px-3 text-right font-outfit text-emerald-400 font-bold">R$ {buyer.lastPUn.toFixed(2)}</td>
@@ -492,8 +499,8 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                       <div>{prod.category}</div>
                       <div className="text-[9px] text-slate-500 mt-0.5">{prod.brand || 'S/Marca'}</div>
                     </td>
-                    <td className="py-3 px-4 text-center font-bold text-slate-300">
-                      {prod.default_commercial_unit}
+                    <td className="py-3 px-4 text-center font-bold text-slate-400">
+                      {prod.default_commercial_unit || 'UN'}
                     </td>
                     <td className="py-3 px-4 text-right text-slate-300 font-mono">
                       R$ {avgPrice.toFixed(2)}

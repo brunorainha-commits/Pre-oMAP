@@ -6,8 +6,7 @@ import {
   Trash2, 
   User, 
   FileText, 
-  Package,
-  Activity
+  Package
 } from 'lucide-react';
 import { db } from '../services/db';
 import type { NormalizedInvoice, Product } from '../services/db';
@@ -149,8 +148,8 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
       ...invoice,
       customer_name: customerName,
       customer_document: customerDocument || null,
-      customer_city: customerCity || undefined,
-      customer_state: customerState || undefined,
+      customer_city: customerCity || null,
+      customer_state: customerState || null,
       invoice_number: invoiceNumber || null,
       order_number: orderNumber || null,
       issue_date: issueDate || null,
@@ -171,11 +170,9 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
   };
 
   const getOriginDetails = () => {
-    switch (invoice.data_origin) {
-      case 'xml_embedded': return { label: 'XML Oficial (DANFE)', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' };
-      case 'xml_api': return { label: 'XML via API', color: 'text-brand-400 bg-brand-500/10 border-brand-500/20' };
-      case 'xml_manual': return { label: 'XML Manual', color: 'text-sky-400 bg-sky-500/10 border-sky-500/20' };
-      default: return { label: 'XML', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' };
+    switch (invoice.source_file_type) {
+      case 'xml': return { label: 'XML', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' };
+      default: return { label: 'Manual', color: 'text-sky-400 bg-sky-500/10 border-sky-500/20' };
     }
   };
   const origin = getOriginDetails();
@@ -567,25 +564,6 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
 
       </div>
 
-      {/* Technical Area (Logs & Debug) */}
-      {invoice.raw_text && (
-        <div className="glass-panel rounded-2xl p-5 mt-6 space-y-4">
-          <details className="group">
-            <summary className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between cursor-pointer list-none select-none">
-              <span className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-brand-500" />
-                Área Técnica e Logs do PDF (Expandir)
-              </span>
-              <span className="transition-transform group-open:rotate-185 text-slate-500">▼</span>
-            </summary>
-            <div className="mt-4 space-y-3">
-              <pre className="text-[10px] text-slate-400 bg-slate-950 p-4 rounded-xl border border-slate-900 overflow-x-auto font-mono max-h-96 whitespace-pre-wrap leading-relaxed">
-                {invoice.raw_text}
-              </pre>
-            </div>
-          </details>
-        </div>
-      )}
 
       {/* Save / Cancel buttons */}
       <div className="flex justify-end items-center gap-3 border-t border-slate-800/80 pt-6">

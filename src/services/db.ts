@@ -9,6 +9,17 @@ import {
   uploadRepository
 } from '../repositories';
 
+import type {
+  Customer,
+  Product,
+  Order,
+  OrderItem,
+  PriceHistory,
+  Upload,
+  NormalizedInvoice,
+  UserRole
+} from '../repositories/types';
+
 export type {
   Customer,
   Product,

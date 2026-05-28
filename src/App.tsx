@@ -72,7 +72,6 @@ function App() {
         id: `upl-${finalInvoice.id}`,
         file_name: finalInvoice.source_file_name,
         file_type: finalInvoice.source_file_type,
-        file_url: null,
         status: 'completed',
         error_message: null,
         extracted_data: finalInvoice,

@@ -342,9 +342,9 @@ export function CustomersPage({ userRole, selectedCustomerId, setSelectedCustome
                         <tr key={idx} className="hover:bg-slate-900/10">
                           <td className="py-2.5 px-3 font-medium text-slate-200">{prodName}</td>
                           <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{ph.date}</td>
-                          <td className="py-2.5 px-3 text-center text-slate-300">{ph.quantity}</td>
-                          <td className="py-2.5 px-3 text-right text-slate-300">R$ {ph.unit_price.toFixed(2)}</td>
-                          <td className="py-2.5 px-3 text-right font-outfit text-white font-semibold">R$ {ph.total_price.toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-center text-slate-300">{ph.internal_quantity}</td>
+                          <td className="py-2.5 px-3 text-right text-slate-300">R$ {ph.internal_unit_price.toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-right font-outfit text-white font-semibold">R$ {ph.commercial_total_price.toFixed(2)}</td>
                         </tr>
                       );
                     })}

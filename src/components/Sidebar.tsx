@@ -7,12 +7,10 @@ import {
   Package, 
   FileText, 
   TrendingUp, 
-  BarChart3, 
-  Bell, 
-  RotateCcw,
-  Shield,
+  BarChart3,
   Activity,
-  Play
+  Bell,
+  Shield
 } from 'lucide-react';
 import type { UserRole } from '../services/db';
 
