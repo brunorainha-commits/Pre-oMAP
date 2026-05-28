@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import {
   UploadCloud, File, AlertCircle, CheckCircle,
-  Eye, AlertTriangle, FileX, ArrowRight
+  Eye, AlertTriangle, FileX, ArrowRight, Zap
 } from 'lucide-react';
 import { parseXmlInvoice } from '../services/parseXml';
 import { normalizeInvoiceData } from '../services/normalizer';
@@ -12,6 +12,7 @@ interface UploadPageProps {
   userRole: string;
   onReviewInvoice: (invoice: NormalizedInvoice) => void;
   onReviewInvoices: (invoices: NormalizedInvoice[]) => void;
+  onAutoImportInvoices: (requests: Array<{ fileId: string; invoice: NormalizedInvoice }>) => Array<{ fileId: string; ok: boolean; message: string }>;
 }
 
 type FileQueueStatus =
@@ -33,7 +34,7 @@ interface UploadFileState {
   extractedData: NormalizedInvoice | null;
 }
 
-export function UploadPage({ userRole, onReviewInvoice, onReviewInvoices }: UploadPageProps) {
+export function UploadPage({ userRole, onReviewInvoice, onReviewInvoices, onAutoImportInvoices }: UploadPageProps) {
   const [fileList, setFileList] = useState<UploadFileState[]>([]);
   const [isDragActive, setIsDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -167,6 +168,30 @@ export function UploadPage({ userRole, onReviewInvoice, onReviewInvoices }: Uplo
     onReviewInvoices(invoices);
   };
 
+  const handleAutoImportReady = () => {
+    const requests = readyFiles
+      .filter(file => file.extractedData)
+      .map(file => ({ fileId: file.id, invoice: file.extractedData! }));
+    if (requests.length === 0) return;
+
+    const results = onAutoImportInvoices(requests);
+    const resultMap = new Map(results.map(result => [result.fileId, result]));
+    setFileList(prev => prev.map(file => {
+      const result = resultMap.get(file.id);
+      if (!result) return file;
+      return {
+        ...file,
+        status: result.ok ? 'completed' : 'error',
+        errorMessage: result.ok ? null : result.message,
+        progress: result.ok ? 100 : file.progress
+      };
+    }));
+
+    const imported = results.filter(result => result.ok).length;
+    const skipped = results.length - imported;
+    alert(`${imported} XML(s) salvo(s) automaticamente.${skipped > 0 ? ` ${skipped} ficaram para revisão.` : ''}`);
+  };
+
   const getStatusBadge = (f: UploadFileState) => {
     const cls = 'text-[10px] px-2 py-0.5 rounded font-semibold flex items-center gap-1';
     switch (f.status) {
@@ -234,11 +259,29 @@ export function UploadPage({ userRole, onReviewInvoice, onReviewInvoices }: Uplo
               </p>
             </div>
             {readyFiles.length > 1 && (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={handleAutoImportReady}
+                  className="btn bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-2 px-4 text-xs font-bold flex items-center justify-center gap-2 rounded-xl"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  Salvar automaticamente
+                </button>
+                <button
+                  onClick={handleReviewAllReady}
+                  className="btn btn-primary py-2 px-4 text-xs flex items-center justify-center gap-2"
+                >
+                  Revisar {readyFiles.length} XMLs em sequência <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+            {readyFiles.length === 1 && (
               <button
-                onClick={handleReviewAllReady}
-                className="btn btn-primary py-2 px-4 text-xs flex items-center justify-center gap-2"
+                onClick={handleAutoImportReady}
+                className="btn bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-2 px-4 text-xs font-bold flex items-center justify-center gap-2 rounded-xl"
               >
-                Revisar {readyFiles.length} XMLs em sequência <ArrowRight className="w-3.5 h-3.5" />
+                <Zap className="w-3.5 h-3.5" />
+                Salvar automaticamente
               </button>
             )}
           </div>

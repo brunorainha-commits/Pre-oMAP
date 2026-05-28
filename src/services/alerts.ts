@@ -2,6 +2,7 @@
 
 import { db } from './db';
 import { formatCurrency } from './formatters';
+import { scheduleCloudBackup } from './cloudSync';
 
 
 export interface CommercialAlert {
@@ -29,6 +30,7 @@ function readDismissedAlertIds(): string[] {
 
 function writeDismissedAlertIds(ids: string[]): void {
   localStorage.setItem(DISMISSED_ALERTS_KEY, JSON.stringify(Array.from(new Set(ids))));
+  scheduleCloudBackup();
 }
 
 export function dismissAlert(alertId: string): void {

@@ -1,4 +1,5 @@
 // src/repositories/BaseRepository.ts
+import { scheduleCloudBackup } from '../services/cloudSync';
 
 export class BaseRepository<T extends { id: string }> {
   protected storageKey: string;
@@ -20,6 +21,7 @@ export class BaseRepository<T extends { id: string }> {
   protected save(data: T[]): void {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(data));
+      scheduleCloudBackup();
     } catch (e) {
       console.error(`Error saving data to ${this.storageKey}`, e);
     }

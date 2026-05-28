@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Calendar, User, FileText, Package, Users, X, Menu } from 'lucide-react';
+import { Search, Bell, Calendar, FileText, Package, Users, X, Menu, LogOut } from 'lucide-react';
 import { db } from '../services/db';
 import type { Customer, Product, Order } from '../services/db';
 import { getActionableAlerts } from '../services/alerts';
@@ -14,6 +14,8 @@ interface TopbarProps {
   alerts: CommercialAlert[];
   onDismissAlert: (alertId: string) => void;
   onToggleMobileMenu?: () => void;
+  userLabel: string;
+  onSignOut: () => void;
 }
 
 export function Topbar({ 
@@ -23,7 +25,9 @@ export function Topbar({
   onSelectOrder,
   alerts,
   onDismissAlert,
-  onToggleMobileMenu
+  onToggleMobileMenu,
+  userLabel,
+  onSignOut
 }: TopbarProps) {
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -305,14 +309,19 @@ export function Topbar({
         </div>
 
         {/* User Card */}
-        <div className="flex items-center gap-3 pl-4 border-l border-slate-800/80">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-brand-600 to-accent-cyan flex items-center justify-center text-white font-bold font-outfit text-sm shadow-md shadow-brand-500/10">
-            <User className="w-4 h-4 text-white" />
-          </div>
+        <div className="flex items-center gap-3 pl-2 sm:pl-4 border-l border-slate-800/80">
+          <img src="/logo.svg" alt="PrecoMap" className="w-8 h-8 shrink-0" />
           <div className="hidden md:block">
             <div className="text-xs font-semibold text-slate-200 font-outfit leading-none">PrecoMap</div>
-            <span className="text-[10px] text-slate-500 leading-none">Operações Internas</span>
+            <span className="text-[10px] text-slate-500 leading-none truncate max-w-[140px] block">{userLabel}</span>
           </div>
+          <button
+            onClick={onSignOut}
+            className="p-2 border border-slate-800 hover:bg-slate-800/50 hover:text-slate-100 rounded-xl transition-all"
+            title="Sair"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
 
       </div>

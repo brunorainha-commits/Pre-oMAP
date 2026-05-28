@@ -8,11 +8,11 @@ import {
   FileText, 
   TrendingUp, 
   BarChart3,
-  Activity,
   Bell,
   Shield
 } from 'lucide-react';
 import type { UserRole } from '../services/db';
+import { BrandLogo } from './BrandLogo';
 
 
 interface SidebarProps {
@@ -72,12 +72,7 @@ export function Sidebar({
     }`}>
       {/* Brand Logo */}
       <div className="p-6 border-b border-slate-800/60 flex items-center gap-3">
-        <div className="bg-gradient-to-tr from-brand-600 to-accent-cyan p-2.5 rounded-xl shadow-lg shadow-brand-500/20">
-          <Activity className="w-6 h-6 text-white" />
-        </div>
-        <div>
-          <h1 className="font-outfit font-bold text-lg text-white leading-none tracking-wide">PrecoMap</h1>
-        </div>
+        <BrandLogo />
       </div>
 
       {/* Navigation */}

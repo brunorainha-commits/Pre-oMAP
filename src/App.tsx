@@ -11,18 +11,35 @@ import { OrdersPage } from './components/OrdersPage';
 import { PriceHistoryPage } from './components/PriceHistoryPage';
 import { ReportsPage } from './components/ReportsPage';
 import { AlertsPage } from './components/AlertsPage';
+import { LoginPage } from './components/LoginPage';
 
 import { db } from './services/db';
 import type { UserRole, NormalizedInvoice } from './services/db';
 import { dismissAlert, dismissAlerts, generateAlerts, getActionableAlerts } from './services/alerts';
 import type { CommercialAlert } from './services/alerts';
-import { applyProductMemoryToInvoice } from './services/normalizer';
+import { applyProductMemoryToInvoice, detectPackagingUnit } from './services/normalizer';
+import { getCurrentSession, isCloudConfigured, restoreCloudSnapshot, signOutCloud, type CloudSession } from './services/cloudSync';
+
+type AuthState = 'checking' | 'login' | 'authenticated' | 'local';
+
+interface AutoImportRequest {
+  fileId: string;
+  invoice: NormalizedInvoice;
+}
+
+interface AutoImportResult {
+  fileId: string;
+  ok: boolean;
+  message: string;
+}
 
 
 function App() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [userRole, setUserRole] = useState<UserRole>('admin');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [authState, setAuthState] = useState<AuthState>('checking');
+  const [cloudSession, setCloudSession] = useState<CloudSession | null>(null);
   
   // Selection states (for drill down navigation)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -44,8 +61,23 @@ function App() {
 
   // Load configuration on mount
   useEffect(() => {
-    setUserRole(db.getUserRole());
-    refreshAlerts();
+    const boot = async () => {
+      const session = getCurrentSession();
+      if (isCloudConfigured() && session) {
+        try {
+          await restoreCloudSnapshot(session);
+          setCloudSession(session);
+          setAuthState('authenticated');
+        } catch {
+          setAuthState('login');
+        }
+      } else {
+        setAuthState('login');
+      }
+      setUserRole(db.getUserRole());
+      refreshAlerts();
+    };
+    void boot();
   }, []);
 
   const refreshAlerts = () => {
@@ -83,9 +115,88 @@ function App() {
     setIsMobileMenuOpen(false);
   };
 
+  const getAutoImportIssues = (invoice: NormalizedInvoice): string[] => {
+    const checkedInvoice = applyProductMemoryToInvoice(invoice);
+    const issues: string[] = [];
+    if (!checkedInvoice.customer_name.trim()) issues.push('cliente vazio');
+    if (checkedInvoice.items.length === 0) issues.push('sem itens');
+    checkedInvoice.items.forEach((item, index) => {
+      const label = item.description || `Item ${index + 1}`;
+      if (item.commercial_quantity <= 0) issues.push(`${label}: quantidade inválida`);
+      if (item.commercial_unit_price <= 0) issues.push(`${label}: preço inválido`);
+      if (item.commercial_total_price <= 0) issues.push(`${label}: total inválido`);
+      if (detectPackagingUnit(item.commercial_unit) && item.units_per_package <= 1) {
+        issues.push(`${label}: conversão da embalagem pendente`);
+      }
+    });
+    return issues;
+  };
+
+  const handleAutoImportInvoices = (requests: AutoImportRequest[]): AutoImportResult[] => {
+    const results: AutoImportResult[] = [];
+    let lastImportedOrderId: string | null = null;
+
+    requests.forEach(({ fileId, invoice }) => {
+      const finalInvoice = applyProductMemoryToInvoice(invoice);
+      const issues = getAutoImportIssues(finalInvoice);
+      if (issues.length > 0) {
+        results.push({ fileId, ok: false, message: issues.slice(0, 2).join('; ') });
+        return;
+      }
+
+      const duplicate = finalInvoice.invoice_key
+        ? db.getOrders().find(order => order.invoice_key === finalInvoice.invoice_key)
+        : db.getOrders().find(order =>
+            order.invoice_number === finalInvoice.invoice_number &&
+            order.issue_date === finalInvoice.issue_date
+          );
+      if (duplicate) {
+        results.push({ fileId, ok: false, message: 'nota já importada' });
+        return;
+      }
+
+      try {
+        const newOrder = db.importInvoice({ ...finalInvoice, status: 'completed' });
+        db.saveUpload({
+          id: `upl-${finalInvoice.id}`,
+          file_name: finalInvoice.source_file_name,
+          file_type: finalInvoice.source_file_type,
+          status: 'completed',
+          error_message: null,
+          extracted_data: finalInvoice,
+          created_at: new Date().toISOString()
+        });
+        lastImportedOrderId = newOrder.id;
+        results.push({ fileId, ok: true, message: 'salvo automaticamente' });
+      } catch (err: any) {
+        results.push({ fileId, ok: false, message: err.message || 'falha ao salvar' });
+      }
+    });
+
+    refreshAlerts();
+    if (lastImportedOrderId) {
+      setSelectedOrderId(lastImportedOrderId);
+      setCurrentTab('orders');
+    }
+    return results;
+  };
+
   const handleRoleChange = (role: UserRole) => {
     setUserRole(role);
     db.setUserRole(role);
+  };
+
+  const handleAuthenticated = (session: CloudSession) => {
+    setCloudSession(session);
+    setUserRole(db.getUserRole());
+    refreshAlerts();
+    setAuthState('authenticated');
+  };
+
+  const handleSignOut = () => {
+    signOutCloud();
+    setCloudSession(null);
+    setAuthState('login');
   };
 
 
@@ -168,6 +279,7 @@ function App() {
             userRole={userRole}
             onReviewInvoice={startSingleReview}
             onReviewInvoices={startBatchReview}
+            onAutoImportInvoices={handleAutoImportInvoices}
           />
         );
       case 'customers':
@@ -217,6 +329,23 @@ function App() {
     }
   };
 
+  if (authState === 'checking') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center">
+        <div className="text-sm text-slate-400">Carregando PrecoMap...</div>
+      </div>
+    );
+  }
+
+  if (authState === 'login') {
+    return (
+      <LoginPage
+        onAuthenticated={handleAuthenticated}
+        onLocalMode={() => setAuthState('local')}
+      />
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-slate-950 font-sans text-slate-100">
       
@@ -254,6 +383,8 @@ function App() {
             alerts={alerts}
             onDismissAlert={handleDismissAlert}
             onToggleMobileMenu={() => setIsMobileMenuOpen(true)}
+            userLabel={cloudSession?.user.email || (authState === 'local' ? 'Modo local' : 'Operações Internas')}
+            onSignOut={handleSignOut}
           />
         </div>
 

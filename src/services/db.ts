@@ -20,6 +20,7 @@ import type {
   UserRole
 } from '../repositories/types';
 import { detectPackagingUnit } from './normalizer';
+import { scheduleCloudBackup } from './cloudSync';
 
 export type {
   Customer,
@@ -100,6 +101,7 @@ export const db = {
   
   setUserRole(role: UserRole): void {
     localStorage.setItem('precomap_user_role', role);
+    scheduleCloudBackup();
   },
 
   // Facade wrappers
