@@ -74,29 +74,44 @@ export function resolvePackageConversion(item: RawInvoiceItem): {
   units_per_package: number;
   packaging_requires_review: boolean;
   packaging_warning: string | null;
+  matched_product_id: string | null;
+  matched_product_name: string | null;
+  matched_internal_unit: string | null;
+  conversion_source: 'product' | 'description' | 'manual' | null;
 } {
   const commercialUnit = normalizeUnit(String(item.commercial_unit || ''));
   const isPackaging = detectPackagingUnit(commercialUnit);
+  const normDesc = getNormalizedDescription(String(item.description || item.normalized_description || ''));
+  const existingProduct = productRepository.findBestMatchForItem({
+    product_code: item.product_code ? String(item.product_code) : null,
+    barcode: item.barcode ? String(item.barcode) : null,
+    description: String(item.description || ''),
+    normalized_description: normDesc
+  });
+  const baseMatch = {
+    matched_product_id: existingProduct?.id || null,
+    matched_product_name: existingProduct?.name || null,
+    matched_internal_unit: existingProduct?.default_internal_unit || null
+  };
 
   if (SINGLE_UNITS.includes(commercialUnit) || WEIGHT_VOLUME_UNITS.includes(commercialUnit)) {
     return {
       units_per_package: 1,
       packaging_requires_review: false,
-      packaging_warning: null
+      packaging_warning: null,
+      ...baseMatch,
+      conversion_source: existingProduct ? 'product' : null
     };
   }
-
-  const normDesc = getNormalizedDescription(String(item.description || ''));
-  let existingProduct = productRepository.findByBarcode(String(item.barcode || ''));
-  if (!existingProduct && item.product_code) existingProduct = productRepository.findByCode(String(item.product_code));
-  if (!existingProduct) existingProduct = productRepository.findByNormalizedName(normDesc);
 
   const productUnits = existingProduct?.units_per_package || 0;
   if (isPackaging && productUnits > 1) {
     return {
       units_per_package: productUnits,
       packaging_requires_review: false,
-      packaging_warning: null
+      packaging_warning: null,
+      ...baseMatch,
+      conversion_source: 'product'
     };
   }
 
@@ -105,7 +120,9 @@ export function resolvePackageConversion(item: RawInvoiceItem): {
     return {
       units_per_package: descriptionUnits,
       packaging_requires_review: false,
-      packaging_warning: null
+      packaging_warning: null,
+      ...baseMatch,
+      conversion_source: 'description'
     };
   }
 
@@ -113,14 +130,18 @@ export function resolvePackageConversion(item: RawInvoiceItem): {
     return {
       units_per_package: 1,
       packaging_requires_review: true,
-      packaging_warning: PACKAGING_REVIEW_WARNING
+      packaging_warning: PACKAGING_REVIEW_WARNING,
+      ...baseMatch,
+      conversion_source: null
     };
   }
 
   return {
     units_per_package: 1,
     packaging_requires_review: false,
-    packaging_warning: null
+    packaging_warning: null,
+    ...baseMatch,
+    conversion_source: existingProduct ? 'product' : null
   };
 }
 
@@ -137,6 +158,37 @@ export function calculateInternalUnitPrice(commercialUnitPrice: number, unitsPer
   return roundAmount(commercialUnitPrice / unitsPerPackage);
 }
 
+export function applyProductMemoryToInvoice(invoice: NormalizedInvoice): NormalizedInvoice {
+  return {
+    ...invoice,
+    items: invoice.items.map(item => {
+      const commercialUnit = item.commercial_unit ? String(item.commercial_unit).trim().toUpperCase() : 'UN';
+      const packageConversion = resolvePackageConversion({
+        ...item,
+        commercial_unit: commercialUnit
+      });
+      const unitsPerPackage = packageConversion.units_per_package > 0 ? packageConversion.units_per_package : item.units_per_package || 1;
+      const internalUnit = packageConversion.matched_internal_unit || item.internal_unit || detectBaseUnit(commercialUnit);
+
+      return {
+        ...item,
+        product_id: packageConversion.matched_product_id || item.product_id,
+        commercial_unit: commercialUnit,
+        units_per_package: unitsPerPackage,
+        internal_unit: internalUnit,
+        internal_quantity: calculateInternalQuantity(item.commercial_quantity, unitsPerPackage),
+        internal_unit_price: calculateInternalUnitPrice(item.commercial_unit_price, unitsPerPackage),
+        packaging_requires_review: detectPackagingUnit(commercialUnit) && unitsPerPackage <= 1,
+        packaging_warning: detectPackagingUnit(commercialUnit) && unitsPerPackage <= 1 ? PACKAGING_REVIEW_WARNING : null,
+        conversion_source: packageConversion.conversion_source || item.conversion_source || null,
+        matched_product_name: packageConversion.matched_product_name || item.matched_product_name || null,
+        save_conversion_to_product: detectPackagingUnit(commercialUnit) ? item.save_conversion_to_product ?? true : item.save_conversion_to_product ?? false
+      };
+    }),
+    updated_at: new Date().toISOString()
+  };
+}
+
 // Primary normalization function
 export function normalizeInvoiceData(rawInput: unknown, fileType: 'xml', fileName: string): NormalizedInvoice {
   const raw = rawInput as RawInvoiceData;
@@ -151,12 +203,12 @@ export function normalizeInvoiceData(rawInput: unknown, fileType: 'xml', fileNam
 
     const packageConversion = resolvePackageConversion({ ...item, commercial_unit: commUnit });
     const upp = packageConversion.units_per_package;
-    const intUnit = detectBaseUnit(commUnit);
+    const intUnit = packageConversion.matched_internal_unit || detectBaseUnit(commUnit);
     const intQty = calculateInternalQuantity(commQty, upp);
     const intPrice = calculateInternalUnitPrice(commPrice, upp);
 
     return {
-      product_id: null,
+      product_id: packageConversion.matched_product_id,
       product_code: item.product_code ? String(item.product_code).trim() : null,
       barcode: item.barcode && item.barcode !== 'SEM GTIN' ? String(item.barcode).trim() : null,
       description: String(item.description).trim(),
@@ -175,6 +227,8 @@ export function normalizeInvoiceData(rawInput: unknown, fileType: 'xml', fileNam
       internal_unit_price: intPrice,
       packaging_requires_review: packageConversion.packaging_requires_review,
       packaging_warning: packageConversion.packaging_warning,
+      conversion_source: packageConversion.conversion_source,
+      matched_product_name: packageConversion.matched_product_name,
       save_conversion_to_product: detectPackagingUnit(commUnit),
 
       discount: item.discount ? roundAmount(parseFloat(String(item.discount))) : null,

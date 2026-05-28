@@ -20,6 +20,7 @@ import {
   roundAmount
 } from '../services/normalizer';
 import { formatCurrency, formatSignedCurrency } from '../services/formatters';
+import { findBestMatchingProduct } from '../services/productMatcher';
 
 interface ReviewPageProps {
   invoice: NormalizedInvoice;
@@ -95,12 +96,16 @@ export function ReviewPage({ invoice, onSave, onCancel, reviewQueueCount = 0 }: 
   const [availableProducts] = useState<Product[]>(() => db.getProducts());
 
   const findProductForItem = (item: ReviewItem): Product | undefined => {
-    return availableProducts.find(product =>
-      product.id === item.product_id ||
-      (!!item.barcode && product.barcode === item.barcode) ||
-      (!!item.product_code && product.code === item.product_code) ||
-      product.normalized_name === item.normalized_description
-    );
+    if (item.product_id) {
+      const byId = availableProducts.find(product => product.id === item.product_id);
+      if (byId) return byId;
+    }
+    return findBestMatchingProduct(availableProducts, {
+      product_code: item.product_code,
+      barcode: item.barcode,
+      description: item.description,
+      normalized_description: item.normalized_description
+    });
   };
 
   const invalidPackageItems = useMemo(
@@ -241,6 +246,8 @@ export function ReviewPage({ invoice, onSave, onCancel, reviewQueueCount = 0 }: 
         commercial_unit: commercialUnit,
         internal_unit: product.default_internal_unit || detectBaseUnit(commercialUnit),
         units_per_package: unitsPerPackage,
+        conversion_source: 'product',
+        matched_product_name: product.name,
         save_conversion_to_product: detectPackagingUnit(commercialUnit) ? true : item.save_conversion_to_product
       });
     }));
@@ -606,6 +613,14 @@ export function ReviewPage({ invoice, onSave, onCancel, reviewQueueCount = 0 }: 
                           <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-300 font-semibold">
                             <AlertTriangle className="w-4 h-4 shrink-0" />
                             {item.packaging_warning}
+                          </div>
+                        )}
+                        {item.conversion_source === 'product' && (
+                          <div className="mt-2 inline-flex max-w-full items-center gap-1.5 text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 rounded-lg px-2 py-1">
+                            <Check className="w-3 h-3 shrink-0" />
+                            <span className="truncate">
+                              Conversão aplicada do cadastro{item.matched_product_name ? `: ${item.matched_product_name}` : ''}
+                            </span>
                           </div>
                         )}
                       </div>

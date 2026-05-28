@@ -240,13 +240,12 @@ export const db = {
       const itemNormName = item.normalized_description;
       let product = item.product_id ? productRepository.getById(item.product_id) : undefined;
       if (!product) {
-        product = productRepository.findByBarcode(item.barcode || '');
-      }
-      if (!product && item.product_code) {
-        product = productRepository.findByCode(item.product_code);
-      }
-      if (!product) {
-        product = productRepository.findByNormalizedName(itemNormName);
+        product = productRepository.findBestMatchForItem({
+          product_code: item.product_code,
+          barcode: item.barcode,
+          description: item.description,
+          normalized_description: itemNormName
+        });
       }
       const itemUnitsPerPackage = item.units_per_package > 0 ? item.units_per_package : 1;
       if (!product) {
@@ -294,6 +293,12 @@ export const db = {
         }
         if (!product.default_internal_unit) {
           product.default_internal_unit = item.internal_unit;
+        }
+        if (!product.code && item.product_code) {
+          product.code = item.product_code;
+        }
+        if (!product.barcode && item.barcode) {
+          product.barcode = item.barcode;
         }
         if (!product.ncm && item.ncm) {
           product.ncm = item.ncm;

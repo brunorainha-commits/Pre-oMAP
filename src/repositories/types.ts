@@ -165,6 +165,8 @@ export interface NormalizedInvoice {
     packaging_requires_review?: boolean;
     packaging_warning?: string | null;
     save_conversion_to_product?: boolean;
+    conversion_source?: 'product' | 'description' | 'manual' | null;
+    matched_product_name?: string | null;
 
     discount: number | null;
     

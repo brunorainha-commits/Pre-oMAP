@@ -16,6 +16,7 @@ import { db } from './services/db';
 import type { UserRole, NormalizedInvoice } from './services/db';
 import { dismissAlert, dismissAlerts, generateAlerts, getActionableAlerts } from './services/alerts';
 import type { CommercialAlert } from './services/alerts';
+import { applyProductMemoryToInvoice } from './services/normalizer';
 
 
 function App() {
@@ -63,7 +64,7 @@ function App() {
 
   const startSingleReview = (invoice: NormalizedInvoice) => {
     setReviewQueue([]);
-    setActiveReviewInvoice(invoice);
+    setActiveReviewInvoice(applyProductMemoryToInvoice(invoice));
     setIsMobileMenuOpen(false);
   };
 
@@ -78,7 +79,7 @@ function App() {
     });
     if (readyInvoices.length === 0) return;
     setReviewQueue(readyInvoices.slice(1));
-    setActiveReviewInvoice(readyInvoices[0]);
+    setActiveReviewInvoice(applyProductMemoryToInvoice(readyInvoices[0]));
     setIsMobileMenuOpen(false);
   };
 
@@ -125,7 +126,7 @@ function App() {
       const [nextInvoice, ...remainingQueue] = reviewQueue;
       if (nextInvoice) {
         setReviewQueue(remainingQueue);
-        setActiveReviewInvoice(nextInvoice);
+        setActiveReviewInvoice(applyProductMemoryToInvoice(nextInvoice));
         return;
       }
 
