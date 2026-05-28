@@ -272,8 +272,8 @@ export function PriceHistoryPage() {
                       <span className="font-mono text-slate-200">{activeProduct.code || 'S/C'}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Unidade Base:</span>
-                      <span className="font-bold text-brand-400">{activeProduct.default_commercial_unit || 'UN'}</span>
+                      <span className="text-slate-500">Unidade Interna (Cálculo):</span>
+                      <span className="font-bold text-brand-400">{activeProduct.default_internal_unit || 'UN'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Categoria:</span>
@@ -326,7 +326,7 @@ export function PriceHistoryPage() {
                       <tr key={item.customerId} className="hover:bg-slate-900/10">
                         <td className="py-2.5 px-4 font-medium text-slate-200">{item.customerName}</td>
                         <td className="py-2.5 px-4 text-center text-slate-400 font-mono">{item.lastPurchaseDate}</td>
-                        <td className="py-2.5 px-4 text-center text-slate-300 font-mono">{item.quantity} {activeProduct.default_commercial_unit}</td>
+                        <td className="py-2.5 px-4 text-center text-slate-300 font-mono">{item.quantity} {activeProduct.default_internal_unit || 'UN'}</td>
                         <td className="py-2.5 px-4 text-right text-slate-400">
                           {item.prevPrice !== null ? `R$ ${item.prevPrice.toFixed(2)}` : 'Primeira compra'}
                         </td>

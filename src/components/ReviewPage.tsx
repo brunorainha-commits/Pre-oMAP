@@ -144,6 +144,55 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
       return;
     }
 
+    // New validations
+    const hasZeroQuantity = items.some(item => (parseFloat(item.commercial_quantity) || 0) <= 0);
+    if (hasZeroQuantity) {
+      alert("Não é permitido salvar pedido com quantidade comercial zero.");
+      return;
+    }
+
+    const hasZeroPrice = items.some(item => (parseFloat(item.commercial_unit_price) || 0) <= 0);
+    if (hasZeroPrice) {
+      alert("Não é permitido salvar pedido com preço comercial zero.");
+      return;
+    }
+
+    const pkgUnits = ['CX', 'CXA', 'CAIXA', 'FD', 'FARDO', 'PCT', 'PACOTE', 'PACK', 'EMB', 'DISPLAY', 'DZ', 'DUZIA', 'KIT'];
+    const hasInvalidPkg = items.some(item => {
+      const u = item.commercial_unit?.toUpperCase() || '';
+      const isPkg = pkgUnits.includes(u);
+      const upp = parseInt(item.units_per_package) || 0;
+      return isPkg && upp < 1;
+    });
+    if (hasInvalidPkg) {
+      alert("Há itens com unidade de embalagem (CX, FD, PCT, etc) sem 'Unidades por embalagem' (mínimo 1).");
+      return;
+    }
+
+    // Check existing order with same key
+    if (invoice.invoice_key) {
+      const existingOrder = db.getOrders().find(o => o.invoice_key === invoice.invoice_key);
+      if (existingOrder) {
+        if (!window.confirm("Esta nota (mesma chave de acesso) já foi importada. Deseja importar novamente e duplicar?")) {
+          return;
+        }
+      }
+    }
+
+    // Check for units_per_package overwrites for linked products
+    for (const item of items) {
+      if (!item.product_code) continue;
+      const existingProduct = db.getProducts().find(p => p.code === item.product_code || p.normalized_name === item.normalized_description);
+      if (existingProduct && existingProduct.units_per_package && existingProduct.units_per_package > 1) {
+        const itemUpp = parseInt(item.units_per_package) || 1;
+        if (existingProduct.units_per_package !== itemUpp) {
+          if (!window.confirm(`O produto "${item.description}" está cadastrado com ${existingProduct.units_per_package} unidades por embalagem. A revisão atual indica ${itemUpp}. Deseja alterar para ${itemUpp}?`)) {
+            return;
+          }
+        }
+      }
+    }
+
     const finalInvoice: NormalizedInvoice = {
       ...invoice,
       customer_name: customerName,
@@ -371,15 +420,25 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
             <div className="overflow-x-auto no-scrollbar">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold">
-                    <th className="py-2.5 pr-2 w-40">Cod / NCM / CFOP</th>
-                    <th className="py-2.5 pr-2">Descrição Normalizada</th>
-                    <th className="py-2.5 pr-2 text-center w-14">Emb</th>
-                    <th className="py-2.5 pr-2 text-center w-14">Qtd (cx)</th>
-                    <th className="py-2.5 pr-2 text-right w-20">R$ Cx</th>
-                    <th className="py-2.5 pr-2 text-center w-12">Un/Cx</th>
-                    <th className="py-2.5 pr-2 text-right w-20">R$ Un</th>
-                    <th className="py-2.5 pr-2 text-right w-24">Total (R$)</th>
+                  <tr className="text-slate-500 border-b border-slate-800 text-[9px] uppercase font-bold bg-slate-900/30">
+                    <th className="py-2 px-2" colSpan={2}>Produto / Vínculo</th>
+                    <th className="py-2 px-2 text-center border-l border-slate-800/50" colSpan={4}>Visão Comercial (XML)</th>
+                    <th className="py-2 px-2 text-center border-l border-slate-800/50 bg-brand-900/10" colSpan={4}>Visão Interna (Unidade)</th>
+                    <th className="py-2 w-8"></th>
+                  </tr>
+                  <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold bg-slate-900/50">
+                    <th className="py-2.5 pr-2 w-48">Códigos</th>
+                    <th className="py-2.5 pr-2">Descrição / XML</th>
+                    
+                    <th className="py-2.5 px-2 text-center w-14 border-l border-slate-800/50">Un. XML</th>
+                    <th className="py-2.5 px-2 text-center w-14">Qtd XML</th>
+                    <th className="py-2.5 px-2 text-right w-20">Preço Emb.</th>
+                    <th className="py-2.5 px-2 text-right w-24">Total XML</th>
+
+                    <th className="py-2.5 px-2 text-center w-16 border-l border-slate-800/50 bg-brand-900/10">Un/Emb</th>
+                    <th className="py-2.5 px-2 text-center w-16 bg-brand-900/10">Qtd Int.</th>
+                    <th className="py-2.5 px-2 text-center w-14 bg-brand-900/10">Un. Int.</th>
+                    <th className="py-2.5 px-2 text-right w-20 bg-brand-900/10">Preço Un.</th>
                     <th className="py-2.5 text-center w-8"></th>
                   </tr>
                 </thead>
@@ -466,8 +525,9 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                           </span>
                         </td>
 
+                        {/* Commercial Vision */}
                         {/* Unit / Emb */}
-                        <td className="py-3 pr-2 text-center">
+                        <td className="py-3 px-2 text-center border-l border-slate-800/50">
                           <input
                             type="text"
                             value={item.commercial_unit || ''}
@@ -480,7 +540,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                         </td>
 
                         {/* Qtd */}
-                        <td className="py-3 pr-2 text-center">
+                        <td className="py-3 px-2 text-center">
                           <input
                             type="number"
                             step="any"
@@ -493,7 +553,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                         </td>
 
                         {/* Unit Price (Caixa) */}
-                        <td className="py-3 pr-2 text-right">
+                        <td className="py-3 px-2 text-right">
                           <input
                             type="number"
                             step="any"
@@ -505,26 +565,8 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                           />
                         </td>
 
-                        {/* Un/Cx */}
-                        <td className="py-3 pr-2 text-center">
-                          <input
-                            type="number"
-                            step="1"
-                            value={item.units_per_package || 1}
-                            onChange={(e) => handleItemChange(idx, 'units_per_package', parseInt(e.target.value) || 1)}
-                            className="w-full bg-slate-950 border-slate-800 focus:border-brand-500 rounded px-1 py-1 text-[10px] text-brand-300 text-center font-bold focus:outline-none"
-                          />
-                        </td>
-
-                        {/* R$ Un (Calculado) */}
-                        <td className="py-3 pr-2 text-right">
-                          <div className="w-full bg-slate-950/50 border border-slate-800/50 rounded px-2 py-1 text-[10px] text-emerald-400 text-right font-bold">
-                            {item.internal_unit_price ? item.internal_unit_price.toFixed(2) : item.commercial_unit_price.toFixed(2)}
-                          </div>
-                        </td>
-
                         {/* Total Price */}
-                        <td className="py-3 pr-2 text-right">
+                        <td className="py-3 px-2 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             {isRowInconsistent && (
                               <span title={`Qtd * Unitário = R$ ${expectedTotal.toFixed(2)} (Diferença de R$ ${Math.abs(expectedTotal - item.commercial_total_price).toFixed(2)})`}>
@@ -540,6 +582,44 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                                 isRowInconsistent ? 'border-rose-500 text-rose-400 font-bold' : 'border-slate-800 text-slate-300'
                               }`}
                             />
+                          </div>
+                        </td>
+
+                        {/* Internal Vision */}
+                        {/* Un/Emb */}
+                        <td className="py-3 px-2 text-center border-l border-slate-800/50 bg-brand-900/5">
+                          <input
+                            type="number"
+                            step="1"
+                            value={item.units_per_package || ''}
+                            placeholder="1"
+                            onChange={(e) => handleItemChange(idx, 'units_per_package', parseInt(e.target.value) || '')}
+                            className="w-full bg-slate-950 border border-brand-500/50 focus:border-brand-400 rounded px-1 py-1 text-[10px] text-brand-300 text-center font-bold focus:outline-none shadow-inner shadow-brand-500/10"
+                          />
+                        </td>
+
+                        {/* Qtd Int. */}
+                        <td className="py-3 px-2 text-center bg-brand-900/5">
+                          <div className="w-full bg-slate-950/50 border border-slate-800/50 rounded px-2 py-1 text-[10px] text-emerald-400/80 text-center font-mono">
+                            {item.internal_quantity || 0}
+                          </div>
+                        </td>
+
+                        {/* Un. Int. */}
+                        <td className="py-3 px-2 text-center bg-brand-900/5">
+                          <input
+                            type="text"
+                            value={item.internal_unit || 'UN'}
+                            maxLength={3}
+                            onChange={(e) => handleItemChange(idx, 'internal_unit', e.target.value.toUpperCase())}
+                            className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded px-1.5 py-1 text-[10px] text-white text-center focus:outline-none"
+                          />
+                        </td>
+
+                        {/* Preço Un. (Calculado) */}
+                        <td className="py-3 px-2 text-right bg-brand-900/5">
+                          <div className="w-full bg-slate-950/80 border border-emerald-500/30 rounded px-2 py-1 text-[11px] text-emerald-400 text-right font-bold shadow-sm shadow-emerald-500/10">
+                            R$ {item.internal_unit_price ? item.internal_unit_price.toFixed(2) : item.commercial_unit_price.toFixed(2)}
                           </div>
                         </td>
 

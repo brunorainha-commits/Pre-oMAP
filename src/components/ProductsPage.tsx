@@ -39,6 +39,8 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
   const [formCategory, setFormCategory] = useState('');
   const [formBrand, setFormBrand] = useState('');
   const [formUnit, setFormUnit] = useState('');
+  const [formInternalUnit, setFormInternalUnit] = useState('');
+  const [formUpp, setFormUpp] = useState<number>(1);
   const [formNcm, setFormNcm] = useState('');
   const [formNotes, setFormNotes] = useState('');
 
@@ -61,6 +63,8 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
     setFormCategory('');
     setFormBrand('');
     setFormUnit('');
+    setFormInternalUnit('');
+    setFormUpp(1);
     setFormNcm('');
     setFormNotes('');
     setShowModal(true);
@@ -75,6 +79,8 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
     setFormCategory(prod.category || '');
     setFormBrand(prod.brand || '');
     setFormUnit(prod.default_commercial_unit || '');
+    setFormInternalUnit(prod.default_internal_unit || '');
+    setFormUpp(prod.units_per_package || 1);
     setFormNcm(prod.ncm || '');
     setFormNotes(prod.notes || '');
     setShowModal(true);
@@ -112,8 +118,8 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
       category: formCategory || 'Não Categorizado',
       brand: formBrand || null,
       default_commercial_unit: formUnit || 'UN',
-      default_internal_unit: editingProduct ? editingProduct.default_internal_unit : null,
-      units_per_package: editingProduct ? editingProduct.units_per_package : 1,
+      default_internal_unit: formInternalUnit || 'UN',
+      units_per_package: formUpp > 0 ? formUpp : 1,
       last_package_price: editingProduct ? editingProduct.last_package_price : 0,
       last_internal_unit_price: editingProduct ? editingProduct.last_internal_unit_price : 0,
       average_package_price: editingProduct ? editingProduct.average_package_price : 0,
@@ -463,25 +469,20 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
         <div className="overflow-x-auto no-scrollbar">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold bg-slate-900/30">
-                <th className="py-3 px-4">Produto</th>
-                <th className="py-3 px-4">Código / EAN</th>
-                <th className="py-3 px-4">Categoria / Marca</th>
-                <th className="py-3 px-4 text-center">Unidade</th>
-                <th className="py-3 px-4 text-right">Preço Médio</th>
-                <th className="py-3 px-4 text-right">Último Preço</th>
+              <tr className="text-slate-500 border-b border-slate-800 text-[9px] uppercase font-bold bg-slate-900/30">
+                <th className="py-3 px-4 w-1/4">Produto</th>
+                <th className="py-3 px-4 w-1/6">Código / EAN</th>
+                <th className="py-3 px-4 text-center">Un / Cx</th>
+                <th className="py-3 px-4 text-center border-l border-slate-800/50 bg-slate-900/40">XML / Emb</th>
+                <th className="py-3 px-4 text-right bg-slate-900/40">Último R$ (Emb)</th>
+                <th className="py-3 px-4 text-center border-l border-brand-900/20 bg-brand-900/10 text-brand-400">Interna</th>
+                <th className="py-3 px-4 text-right bg-brand-900/10 text-brand-400">Médio R$ (Un)</th>
+                <th className="py-3 px-4 text-right bg-brand-900/10 text-brand-400">Último R$ (Un)</th>
                 <th className="py-3 px-4 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/40">
               {filteredProducts.map((prod) => {
-                const history = db.getPriceHistoryByProduct(prod.id);
-                const totalQty = history.reduce((sum, h) => sum + h.internal_quantity, 0);
-                const totalAmt = history.reduce((sum, h) => sum + h.commercial_total_price, 0);
-                const avgPrice = totalQty > 0 ? totalAmt / totalQty : 0;
-                
-                const lastPrice = history.length > 0 ? history[history.length - 1].internal_unit_price : 0;
-
                 return (
                   <tr 
                     key={prod.id} 
@@ -495,18 +496,23 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                       <div>Cód: {prod.code || 'S/C'}</div>
                       <div className="text-[9px] text-slate-500 mt-0.5">EAN: {prod.barcode || 'S/EAN'}</div>
                     </td>
-                    <td className="py-3 px-4 text-slate-400">
-                      <div>{prod.category}</div>
-                      <div className="text-[9px] text-slate-500 mt-0.5">{prod.brand || 'S/Marca'}</div>
-                    </td>
                     <td className="py-3 px-4 text-center font-bold text-slate-400">
+                      <div className="text-brand-300">{prod.units_per_package || 1}</div>
+                    </td>
+                    <td className="py-3 px-4 text-center font-bold text-slate-500 border-l border-slate-800/50 bg-slate-900/40">
                       {prod.default_commercial_unit || 'UN'}
                     </td>
-                    <td className="py-3 px-4 text-right text-slate-300 font-mono">
-                      R$ {avgPrice.toFixed(2)}
+                    <td className="py-3 px-4 text-right text-slate-400 font-mono bg-slate-900/40">
+                      R$ {(prod.last_package_price || 0).toFixed(2)}
                     </td>
-                    <td className="py-3 px-4 text-right font-outfit text-white font-bold">
-                      R$ {lastPrice.toFixed(2)}
+                    <td className="py-3 px-4 text-center font-bold text-emerald-500 border-l border-brand-900/20 bg-brand-900/5">
+                      {prod.default_internal_unit || 'UN'}
+                    </td>
+                    <td className="py-3 px-4 text-right text-emerald-400/80 font-mono bg-brand-900/5">
+                      R$ {(prod.average_internal_unit_price || 0).toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4 text-right font-outfit text-emerald-400 font-bold bg-brand-900/5">
+                      R$ {(prod.last_internal_unit_price || 0).toFixed(2)}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center gap-2">
@@ -618,13 +624,38 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase font-semibold">Unidade de Medida</label>
+                  <label className="text-[10px] text-slate-500 uppercase font-semibold">Unidade de Medida Comercial</label>
                   <input
                     type="text"
                     value={formUnit}
+                    onChange={(e) => setFormUnit(e.target.value.toUpperCase())}
                     maxLength={3}
-                    placeholder="Ex: UN, SC, KG, CX"
+                    placeholder="Ex: CX, FD, UN"
                     className="w-full bg-slate-900 border border-slate-800 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-brand-400 uppercase font-semibold">Unidade de Medida Interna</label>
+                  <input
+                    type="text"
+                    value={formInternalUnit}
+                    onChange={(e) => setFormInternalUnit(e.target.value.toUpperCase())}
+                    maxLength={3}
+                    placeholder="Ex: UN, KG"
+                    className="w-full bg-slate-900 border border-brand-500/50 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-brand-400 uppercase font-semibold">Unidades por Embalagem</label>
+                  <input
+                    type="number"
+                    value={formUpp}
+                    onChange={(e) => setFormUpp(parseInt(e.target.value) || 1)}
+                    min={1}
+                    className="w-full bg-slate-900 border border-brand-500/50 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
                   />
                 </div>
                 <div>

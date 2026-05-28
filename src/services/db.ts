@@ -343,6 +343,9 @@ export const db = {
 
         const sumInt = prodHistory.reduce((sum, ph) => sum + ph.internal_unit_price, 0);
         prod.average_internal_unit_price = sumInt / prodHistory.length;
+        
+        prod.min_internal_unit_price = Math.min(...prodHistory.map(ph => ph.internal_unit_price));
+        prod.max_internal_unit_price = Math.max(...prodHistory.map(ph => ph.internal_unit_price));
       }
       prod.updated_at = new Date().toISOString();
       productRepository.upsert(prod);

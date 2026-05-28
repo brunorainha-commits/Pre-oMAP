@@ -224,13 +224,16 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
               <div className="overflow-x-auto no-scrollbar border border-slate-800/40 rounded-xl">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold bg-slate-900/30">
+                    <tr className="text-slate-500 border-b border-slate-800 text-[9px] uppercase font-bold bg-slate-900/30">
                       <th className="py-2.5 px-3">Código</th>
                       <th className="py-2.5 px-3">Descrição</th>
-                      <th className="py-2.5 px-3 text-center">Qtd</th>
-                      <th className="py-2.5 px-3 text-center">Un</th>
-                      <th className="py-2.5 px-3 text-right">Preço Unitário</th>
-                      <th className="py-2.5 px-3 text-right">Total</th>
+                      <th className="py-2.5 px-3 text-center border-l border-slate-800/50">Qtd XML</th>
+                      <th className="py-2.5 px-3 text-center">Un XML</th>
+                      <th className="py-2.5 px-3 text-right">R$ Emb</th>
+                      <th className="py-2.5 px-3 text-center border-l border-brand-900/20 bg-brand-900/10 text-brand-400">Qtd Int.</th>
+                      <th className="py-2.5 px-3 text-center bg-brand-900/10 text-brand-400">Un Int.</th>
+                      <th className="py-2.5 px-3 text-right bg-brand-900/10 text-brand-400">R$ Un</th>
+                      <th className="py-2.5 px-3 text-right">Total XML</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/20">
@@ -238,9 +241,12 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
                       <tr key={idx} className="hover:bg-slate-900/10">
                         <td className="py-2.5 px-3 font-mono text-[10px] text-slate-400">{item.product_code || 'S/C'}</td>
                         <td className="py-2.5 px-3 font-medium text-slate-200">{item.description}</td>
-                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{item.commercial_quantity}</td>
+                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono border-l border-slate-800/50">{item.commercial_quantity}</td>
                         <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{item.commercial_unit || 'UN'}</td>
                         <td className="py-2.5 px-3 text-right text-slate-300">R$ {item.commercial_unit_price.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-center text-emerald-400/80 font-mono border-l border-brand-900/20 bg-brand-900/5">{item.internal_quantity}</td>
+                        <td className="py-2.5 px-3 text-center text-emerald-500 font-bold bg-brand-900/5">{item.internal_unit || 'UN'}</td>
+                        <td className="py-2.5 px-3 text-right text-emerald-400 bg-brand-900/5">R$ {(item.internal_unit_price || item.commercial_unit_price).toFixed(2)}</td>
                         <td className="py-2.5 px-3 text-right font-outfit text-white font-bold">R$ {item.commercial_total_price.toFixed(2)}</td>
                       </tr>
                     ))}
