@@ -1,6 +1,7 @@
 // Alerts Service (alerts.ts)
 
 import { db } from './db';
+import { formatCurrency } from './formatters';
 
 
 export interface CommercialAlert {
@@ -92,7 +93,7 @@ export function generateAlerts(): CommercialAlert[] {
           type: 'price_increase',
           severity: 'high',
           title: `Aumento expressivo no preço: +${varPct.toFixed(1)}%`,
-          description: `O produto "${prod.name}" aumentou de R$ ${prevPrice.toFixed(2)} para R$ ${currentPrice.toFixed(2)} na última nota.`,
+          description: `O produto "${prod.name}" aumentou de ${formatCurrency(prevPrice)} para ${formatCurrency(currentPrice)} na última nota.`,
           target_id: prod.id,
           meta: { varPct, oldPrice: prevPrice, newPrice: currentPrice, date: latestPh.date },
           created_at: new Date().toISOString()
@@ -103,7 +104,7 @@ export function generateAlerts(): CommercialAlert[] {
           type: 'price_decrease',
           severity: 'medium',
           title: `Queda expressiva no preço: ${varPct.toFixed(1)}%`,
-          description: `O produto "${prod.name}" caiu de R$ ${prevPrice.toFixed(2)} para R$ ${currentPrice.toFixed(2)} na última nota.`,
+          description: `O produto "${prod.name}" caiu de ${formatCurrency(prevPrice)} para ${formatCurrency(currentPrice)} na última nota.`,
           target_id: prod.id,
           meta: { varPct, oldPrice: prevPrice, newPrice: currentPrice, date: latestPh.date },
           created_at: new Date().toISOString()
@@ -226,7 +227,7 @@ export function generateAlerts(): CommercialAlert[] {
         type: 'anomalous_order',
         severity: 'medium',
         title: 'Pedido com valor acima do padrão',
-        description: `O pedido ${order.order_number} de R$ ${order.total_amount.toFixed(2)} é mais do que o dobro da média habitual deste cliente (R$ ${avgAmount.toFixed(2)}).`,
+        description: `O pedido ${order.order_number} de ${formatCurrency(order.total_amount)} é mais do que o dobro da média habitual deste cliente (${formatCurrency(avgAmount)}).`,
         target_id: order.id,
         meta: { avgAmount, currentAmount: order.total_amount },
         created_at: order.created_at

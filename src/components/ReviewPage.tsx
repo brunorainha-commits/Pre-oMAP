@@ -1,15 +1,25 @@
-import { useState, useEffect } from 'react';
-import { 
-  AlertTriangle, 
-  Check, 
-  Plus, 
-  Trash2, 
-  User, 
-  FileText, 
+import { useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  Check,
+  Plus,
+  Trash2,
+  User,
+  FileText,
   Package
 } from 'lucide-react';
 import { db } from '../services/db';
 import type { NormalizedInvoice, Product } from '../services/db';
+import {
+  calculateInternalQuantity,
+  calculateInternalUnitPrice,
+  detectBaseUnit,
+  detectPackagingUnit,
+  getNormalizedDescription,
+  PACKAGING_REVIEW_WARNING,
+  roundAmount
+} from '../services/normalizer';
+import { formatCurrency, formatSignedCurrency } from '../services/formatters';
 
 interface ReviewPageProps {
   invoice: NormalizedInvoice;
@@ -17,99 +27,153 @@ interface ReviewPageProps {
   onCancel: () => void;
 }
 
+type ReviewItem = NormalizedInvoice['items'][number];
+
+function toNumber(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeReviewItem(item: ReviewItem): ReviewItem {
+  const commercialUnit = (item.commercial_unit || 'UN').toUpperCase().trim();
+  const isPackaging = detectPackagingUnit(commercialUnit);
+  const rawUnits = isPackaging ? toNumber(item.units_per_package) : 1;
+  const unitsPerPackage = isPackaging ? rawUnits : 1;
+  const safeUnits = unitsPerPackage > 0 ? unitsPerPackage : 1;
+  const commercialQuantity = toNumber(item.commercial_quantity);
+  const commercialUnitPrice = toNumber(item.commercial_unit_price);
+  const packagingRequiresReview = isPackaging && unitsPerPackage <= 1;
+
+  return {
+    ...item,
+    commercial_unit: commercialUnit,
+    commercial_quantity: commercialQuantity,
+    commercial_unit_price: commercialUnitPrice,
+    commercial_total_price: roundAmount(toNumber(item.commercial_total_price)),
+    units_per_package: unitsPerPackage,
+    internal_unit: item.internal_unit || detectBaseUnit(commercialUnit),
+    internal_quantity: calculateInternalQuantity(commercialQuantity, safeUnits),
+    internal_unit_price: calculateInternalUnitPrice(commercialUnitPrice, safeUnits),
+    packaging_requires_review: packagingRequiresReview,
+    packaging_warning: packagingRequiresReview ? PACKAGING_REVIEW_WARNING : null,
+    save_conversion_to_product: isPackaging ? item.save_conversion_to_product ?? true : item.save_conversion_to_product ?? false
+  };
+}
+
 export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
-  // State for editable customer info
   const [customerName, setCustomerName] = useState(invoice.customer_name);
   const [customerDocument, setCustomerDocument] = useState(invoice.customer_document || '');
   const [customerCity, setCustomerCity] = useState(invoice.customer_city || '');
   const [customerState, setCustomerState] = useState(invoice.customer_state || '');
 
-  // State for editable order info
   const [invoiceNumber, setInvoiceNumber] = useState(invoice.invoice_number || '');
   const [orderNumber, setOrderNumber] = useState(invoice.order_number || '');
   const [issueDate, setIssueDate] = useState(invoice.issue_date || '');
   const [discountAmount, setDiscountAmount] = useState<number>(invoice.discount_amount || 0);
   const [shippingAmount, setShippingAmount] = useState<number>(invoice.shipping_amount || 0);
 
-  // State for editable items
-  const [items, setItems] = useState<any[]>(invoice.items);
+  const [items, setItems] = useState<ReviewItem[]>(() => invoice.items.map(normalizeReviewItem));
+  const [availableProducts] = useState<Product[]>(() => db.getProducts());
 
-  // Available products list for linking
-  const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
+  const findProductForItem = (item: ReviewItem): Product | undefined => {
+    return availableProducts.find(product =>
+      product.id === item.product_id ||
+      (!!item.barcode && product.barcode === item.barcode) ||
+      (!!item.product_code && product.code === item.product_code) ||
+      product.normalized_name === item.normalized_description
+    );
+  };
 
-  useEffect(() => {
-    setAvailableProducts(db.getProducts());
-  }, []);
+  const invalidPackageItems = useMemo(
+    () => items.filter(item => detectPackagingUnit(item.commercial_unit) && toNumber(item.units_per_package) <= 1),
+    [items]
+  );
 
-  // Update item field
-  const handleItemChange = (index: number, field: string, value: any) => {
+  const hasBlockingRows = useMemo(
+    () => items.some(item =>
+      toNumber(item.commercial_quantity) <= 0 ||
+      toNumber(item.commercial_unit_price) <= 0 ||
+      toNumber(item.commercial_total_price) <= 0 ||
+      (detectPackagingUnit(item.commercial_unit) && toNumber(item.units_per_package) <= 1)
+    ),
+    [items]
+  );
+
+  const handleItemChange = (index: number, field: keyof ReviewItem, value: ReviewItem[keyof ReviewItem]) => {
     setItems(prev => prev.map((item, idx) => {
       if (idx !== index) return item;
-      const updated = { ...item, [field]: value };
-      
-      // Auto recalculate total if commercial quantity or price changes
+
+      const updated: ReviewItem = { ...item, [field]: value };
+
+      if (field === 'description') {
+        updated.normalized_description = getNormalizedDescription(String(value || ''));
+      }
+
+      if (field === 'commercial_unit') {
+        const commercialUnit = String(value || 'UN').toUpperCase().trim();
+        updated.commercial_unit = commercialUnit;
+        updated.internal_unit = detectBaseUnit(commercialUnit);
+        if (detectPackagingUnit(commercialUnit)) {
+          updated.save_conversion_to_product = true;
+        } else {
+          updated.units_per_package = 1;
+          updated.save_conversion_to_product = false;
+        }
+      }
+
       if (field === 'commercial_quantity' || field === 'commercial_unit_price') {
-        const q = field === 'commercial_quantity' ? parseFloat(value) || 0 : item.commercial_quantity;
-        const p = field === 'commercial_unit_price' ? parseFloat(value) || 0 : item.commercial_unit_price;
-        updated.commercial_total_price = Math.round((q * p) * 100) / 100;
-        
-        // Also recalculate internal logic
-        const upp = item.units_per_package || 1;
-        updated.internal_quantity = Math.round((q * upp) * 100) / 100;
-        updated.internal_unit_price = Math.round((updated.commercial_unit_price / upp) * 100) / 100;
+        const quantity = field === 'commercial_quantity' ? toNumber(value) : toNumber(item.commercial_quantity);
+        const unitPrice = field === 'commercial_unit_price' ? toNumber(value) : toNumber(item.commercial_unit_price);
+        updated.commercial_total_price = roundAmount(quantity * unitPrice);
       }
 
-      // If units_per_package changes
-      if (field === 'units_per_package') {
-        const upp = value || 1;
-        updated.internal_quantity = Math.round((item.commercial_quantity * upp) * 100) / 100;
-        updated.internal_unit_price = Math.round((item.commercial_unit_price / upp) * 100) / 100;
-      }
-      
-      return updated;
+      return normalizeReviewItem(updated);
     }));
   };
 
-  // Auto-correct all totals
   const handleAutoCorrectTotals = () => {
-    setItems(prev => prev.map(item => {
-      const correctTotal = Math.round((item.commercial_quantity * item.commercial_unit_price) * 100) / 100;
-      return {
-        ...item,
-        commercial_total_price: correctTotal
-      };
-    }));
+    setItems(prev => prev.map(item => normalizeReviewItem({
+      ...item,
+      commercial_total_price: roundAmount(toNumber(item.commercial_quantity) * toNumber(item.commercial_unit_price))
+    })));
   };
 
-  // Link item to an existing product
   const handleLinkProduct = (index: number, productId: string) => {
-    const prod = availableProducts.find(p => p.id === productId);
-    if (!prod) return;
+    const product = availableProducts.find(p => p.id === productId);
+    if (!product) return;
 
     setItems(prev => prev.map((item, idx) => {
       if (idx !== index) return item;
-      return {
+
+      const commercialUnit = product.default_commercial_unit || item.commercial_unit || 'UN';
+      const unitsPerPackage = product.units_per_package && product.units_per_package > 0
+        ? product.units_per_package
+        : item.units_per_package;
+
+      return normalizeReviewItem({
         ...item,
-        product_code: prod.code,
-        barcode: prod.barcode,
-        description: prod.name,
-        normalized_description: prod.normalized_name,
-        commercial_unit: prod.default_commercial_unit || item.commercial_unit,
-        internal_unit: prod.default_internal_unit || item.internal_unit
-      };
+        product_id: product.id,
+        product_code: product.code,
+        barcode: product.barcode,
+        description: product.name,
+        normalized_description: product.normalized_name,
+        commercial_unit: commercialUnit,
+        internal_unit: product.default_internal_unit || detectBaseUnit(commercialUnit),
+        units_per_package: unitsPerPackage,
+        save_conversion_to_product: detectPackagingUnit(commercialUnit) ? true : item.save_conversion_to_product
+      });
     }));
   };
 
-  // Remove item
   const handleRemoveItem = (index: number) => {
     setItems(prev => prev.filter((_, idx) => idx !== index));
   };
 
-  // Add item manually
   const handleAddItem = () => {
     setItems(prev => [
       ...prev,
-      {
+      normalizeReviewItem({
+        product_id: null,
         product_code: '',
         barcode: '',
         description: 'Novo Item Manual',
@@ -124,74 +188,81 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
         internal_unit: 'UN',
         internal_quantity: 1,
         internal_unit_price: 0,
+        packaging_requires_review: false,
+        packaging_warning: null,
+        save_conversion_to_product: false,
         discount: null
-      }
+      })
     ]);
   };
 
-  // Calculate items sum
-  const itemsTotal = items.reduce((sum, item) => sum + (item.commercial_total_price || 0), 0);
+  const itemsTotal = items.reduce((sum, item) => sum + toNumber(item.commercial_total_price), 0);
   const totalValue = Math.max(0, itemsTotal - discountAmount + shippingAmount);
 
-  // Form submit handler
   const handleSaveClick = () => {
     if (!customerName.trim()) {
-      alert("Por favor, preencha o nome do cliente.");
+      alert('Por favor, preencha o nome do cliente.');
       return;
     }
     if (items.length === 0) {
-      alert("O pedido deve conter pelo menos um item.");
+      alert('O pedido deve conter pelo menos um item.');
+      return;
+    }
+    if (items.some(item => toNumber(item.commercial_quantity) <= 0)) {
+      alert('Não é permitido salvar pedido com quantidade comercial menor ou igual a zero.');
+      return;
+    }
+    if (items.some(item => toNumber(item.commercial_unit_price) <= 0)) {
+      alert('Não é permitido salvar pedido com preço comercial menor ou igual a zero.');
+      return;
+    }
+    if (items.some(item => toNumber(item.commercial_total_price) <= 0)) {
+      alert('Não é permitido salvar pedido com total comercial menor ou igual a zero.');
+      return;
+    }
+    if (invalidPackageItems.length > 0) {
+      alert(PACKAGING_REVIEW_WARNING);
       return;
     }
 
-    // New validations
-    const hasZeroQuantity = items.some(item => (parseFloat(item.commercial_quantity) || 0) <= 0);
-    if (hasZeroQuantity) {
-      alert("Não é permitido salvar pedido com quantidade comercial zero.");
-      return;
-    }
-
-    const hasZeroPrice = items.some(item => (parseFloat(item.commercial_unit_price) || 0) <= 0);
-    if (hasZeroPrice) {
-      alert("Não é permitido salvar pedido com preço comercial zero.");
-      return;
-    }
-
-    const pkgUnits = ['CX', 'CXA', 'CAIXA', 'FD', 'FARDO', 'PCT', 'PACOTE', 'PACK', 'EMB', 'DISPLAY', 'DZ', 'DUZIA', 'KIT'];
-    const hasInvalidPkg = items.some(item => {
-      const u = item.commercial_unit?.toUpperCase() || '';
-      const isPkg = pkgUnits.includes(u);
-      const upp = parseInt(item.units_per_package) || 0;
-      return isPkg && upp < 1;
-    });
-    if (hasInvalidPkg) {
-      alert("Há itens com unidade de embalagem (CX, FD, PCT, etc) sem 'Unidades por embalagem' (mínimo 1).");
-      return;
-    }
-
-    // Check existing order with same key
     if (invoice.invoice_key) {
       const existingOrder = db.getOrders().find(o => o.invoice_key === invoice.invoice_key);
-      if (existingOrder) {
-        if (!window.confirm("Esta nota (mesma chave de acesso) já foi importada. Deseja importar novamente e duplicar?")) {
-          return;
-        }
+      if (existingOrder && !window.confirm('Esta nota (mesma chave de acesso) já foi importada. Deseja importar novamente e duplicar?')) {
+        return;
       }
     }
 
-    // Check for units_per_package overwrites for linked products
-    for (const item of items) {
-      if (!item.product_code) continue;
-      const existingProduct = db.getProducts().find(p => p.code === item.product_code || p.normalized_name === item.normalized_description);
-      if (existingProduct && existingProduct.units_per_package && existingProduct.units_per_package > 1) {
-        const itemUpp = parseInt(item.units_per_package) || 1;
-        if (existingProduct.units_per_package !== itemUpp) {
-          if (!window.confirm(`O produto "${item.description}" está cadastrado com ${existingProduct.units_per_package} unidades por embalagem. A revisão atual indica ${itemUpp}. Deseja alterar para ${itemUpp}?`)) {
-            return;
-          }
-        }
+    const deniedConversionUpdates = new Set<number>();
+    items.forEach((item, idx) => {
+      const product = findProductForItem(item);
+      const itemUnits = toNumber(item.units_per_package);
+      if (
+        product?.units_per_package &&
+        product.units_per_package > 1 &&
+        itemUnits > 1 &&
+        product.units_per_package !== itemUnits &&
+        item.save_conversion_to_product
+      ) {
+        const confirmed = window.confirm(
+          `O produto "${item.description}" está cadastrado com ${product.units_per_package} unidades por embalagem. Deseja atualizar o cadastro para ${itemUnits}?`
+        );
+        if (!confirmed) deniedConversionUpdates.add(idx);
       }
-    }
+    });
+
+    const finalItems = items.map((item, idx) => {
+      const normalized = normalizeReviewItem(item);
+      return {
+        ...normalized,
+        commercial_quantity: toNumber(normalized.commercial_quantity),
+        commercial_unit_price: toNumber(normalized.commercial_unit_price),
+        commercial_total_price: toNumber(normalized.commercial_total_price),
+        units_per_package: toNumber(normalized.units_per_package),
+        internal_quantity: toNumber(normalized.internal_quantity),
+        internal_unit_price: toNumber(normalized.internal_unit_price),
+        save_conversion_to_product: Boolean(normalized.save_conversion_to_product) && !deniedConversionUpdates.has(idx)
+      };
+    });
 
     const finalInvoice: NormalizedInvoice = {
       ...invoice,
@@ -204,40 +275,24 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
       issue_date: issueDate || null,
       discount_amount: discountAmount > 0 ? discountAmount : null,
       shipping_amount: shippingAmount > 0 ? shippingAmount : null,
-      total_amount: Math.round(totalValue * 100) / 100,
-      items: items.map(item => ({
-        ...item,
-        commercial_quantity: parseFloat(item.commercial_quantity) || 0,
-        commercial_unit_price: parseFloat(item.commercial_unit_price) || 0,
-        commercial_total_price: parseFloat(item.commercial_total_price) || 0,
-        units_per_package: parseInt(item.units_per_package) || 1,
-      })),
+      total_amount: roundAmount(totalValue),
+      items: finalItems,
       status: 'completed'
     };
 
     onSave(finalInvoice);
   };
 
-  const getOriginDetails = () => {
-    switch (invoice.source_file_type) {
-      case 'xml': return { label: 'XML', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' };
-      default: return { label: 'Manual', color: 'text-sky-400 bg-sky-500/10 border-sky-500/20' };
-    }
-  };
-  const origin = getOriginDetails();
-
   return (
     <div className="space-y-6 animate-fade-in pb-12 max-w-7xl mx-auto">
-      
-      {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 glass-panel rounded-2xl p-5">
         <div>
           <h2 className="text-xl font-bold font-outfit text-white tracking-wide">Revise os dados do pedido antes de salvar</h2>
           <div className="flex flex-wrap items-center gap-2 mt-2">
             <span className="text-sm text-slate-400">Arquivo:</span>
             <code className="text-slate-300 font-mono text-xs bg-slate-900 px-2 py-1 rounded">{invoice.source_file_name}</code>
-            <span className={`text-[10px] px-2 py-0.5 rounded font-semibold border ${origin.color}`}>
-              {origin.label}
+            <span className="text-[10px] px-2 py-0.5 rounded font-semibold border text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
+              XML
             </span>
           </div>
           {invoice.invoice_key && (
@@ -252,11 +307,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        
-        {/* Left Column: Client and Invoice General Data */}
         <div className="space-y-6 lg:col-span-1">
-          
-          {/* Customer Section */}
           <div className="glass-panel rounded-2xl p-5 space-y-4">
             <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-slate-800 pb-2">
               <User className="w-4 h-4 text-brand-500" />
@@ -309,7 +360,6 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
             </div>
           </div>
 
-          {/* Invoice Headers Section */}
           <div className="glass-panel rounded-2xl p-5 space-y-4">
             <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-slate-800 pb-2">
               <FileText className="w-4 h-4 text-accent-cyan" />
@@ -354,7 +404,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                   <input
                     type="number"
                     value={discountAmount || ''}
-                    onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setDiscountAmount(toNumber(e.target.value))}
                     className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
                   />
                 </div>
@@ -363,32 +413,30 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                   <input
                     type="number"
                     value={shippingAmount || ''}
-                    onChange={(e) => setShippingAmount(parseFloat(e.target.value) || 0)}
+                    onChange={(e) => setShippingAmount(toNumber(e.target.value))}
                     className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
                   />
                 </div>
               </div>
 
-              {/* Total Card */}
               <div className="bg-slate-950/60 rounded-xl p-4 border border-slate-850 mt-4 space-y-1.5">
                 <div className="flex justify-between text-[10px] text-slate-500">
                   <span>Soma dos Itens:</span>
-                  <span>R$ {itemsTotal.toFixed(2)}</span>
+                  <span>{formatCurrency(itemsTotal)}</span>
                 </div>
                 <div className="flex justify-between text-[10px] text-slate-500">
                   <span>Desconto / Frete:</span>
-                  <span>-R$ {discountAmount.toFixed(2)} / +R$ {shippingAmount.toFixed(2)}</span>
+                  <span>{formatCurrency(-discountAmount)} / {formatSignedCurrency(shippingAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center border-t border-slate-800/80 pt-2 mt-1">
                   <span className="text-xs font-bold text-slate-200">Valor Total do Pedido:</span>
-                  <span className="text-sm font-bold text-white font-outfit">R$ {totalValue.toFixed(2)}</span>
+                  <span className="text-sm font-bold text-white font-outfit">{formatCurrency(totalValue)}</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Editable Items Grid Table */}
         <div className="lg:col-span-3 space-y-4">
           <div className="glass-panel rounded-2xl p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
@@ -396,15 +444,15 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                 <Package className="w-4 h-4 text-accent-emerald" />
                 Itens da Nota / Produtos ({items.length})
               </h3>
-              
+
               <div className="flex items-center self-end sm:self-auto">
                 <button
                   onClick={handleAutoCorrectTotals}
                   className="flex items-center gap-1 px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 rounded-lg text-xs font-semibold transition-colors mr-2"
-                  title="Corrigir o total de todos os itens baseando-se em Quantidade * Preço Unitário"
+                  title="Corrigir o total de todos os itens com quantidade x preço unitário"
                 >
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>Corrigir automaticamente totais</span>
+                  <span>Corrigir totais</span>
                 </button>
                 <button
                   onClick={handleAddItem}
@@ -416,236 +464,233 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
               </div>
             </div>
 
-            {/* Items list table */}
-            <div className="overflow-x-auto no-scrollbar">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="text-slate-500 border-b border-slate-800 text-[9px] uppercase font-bold bg-slate-900/30">
-                    <th className="py-2 px-2" colSpan={2}>Produto / Vínculo</th>
-                    <th className="py-2 px-2 text-center border-l border-slate-800/50" colSpan={4}>Visão Comercial (XML)</th>
-                    <th className="py-2 px-2 text-center border-l border-slate-800/50 bg-brand-900/10" colSpan={4}>Visão Interna (Unidade)</th>
-                    <th className="py-2 w-8"></th>
-                  </tr>
-                  <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold bg-slate-900/50">
-                    <th className="py-2.5 pr-2 w-48">Códigos</th>
-                    <th className="py-2.5 pr-2">Descrição / XML</th>
-                    
-                    <th className="py-2.5 px-2 text-center w-14 border-l border-slate-800/50">Un. XML</th>
-                    <th className="py-2.5 px-2 text-center w-14">Qtd XML</th>
-                    <th className="py-2.5 px-2 text-right w-20">Preço Emb.</th>
-                    <th className="py-2.5 px-2 text-right w-24">Total XML</th>
+            {invalidPackageItems.length > 0 && (
+              <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 text-amber-300 px-3 py-2 rounded-xl text-xs font-semibold">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{PACKAGING_REVIEW_WARNING} antes de salvar.</span>
+              </div>
+            )}
 
-                    <th className="py-2.5 px-2 text-center w-16 border-l border-slate-800/50 bg-brand-900/10">Un/Emb</th>
-                    <th className="py-2.5 px-2 text-center w-16 bg-brand-900/10">Qtd Int.</th>
-                    <th className="py-2.5 px-2 text-center w-14 bg-brand-900/10">Un. Int.</th>
-                    <th className="py-2.5 px-2 text-right w-20 bg-brand-900/10">Preço Un.</th>
-                    <th className="py-2.5 text-center w-8"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/40">
-                  {items.map((item, idx) => {
-                    // Try to find if this item matches any registered product
-                    const matchedProd = availableProducts.find(p => 
-                      p.code === item.product_code || 
-                      p.normalized_name === item.normalized_description
-                    );
+            <div className="space-y-3">
+              {items.map((item, idx) => {
+                const matchedProd = findProductForItem(item);
+                const expectedTotal = toNumber(item.commercial_quantity) * toNumber(item.commercial_unit_price);
+                const isRowInconsistent = Math.abs(expectedTotal - toNumber(item.commercial_total_price)) > 0.05;
+                const isPackaging = detectPackagingUnit(item.commercial_unit);
+                const needsConversion = Boolean(item.packaging_requires_review);
 
-                    // Math validation per row
-                    const expectedTotal = item.commercial_quantity * item.commercial_unit_price;
-                    const isRowInconsistent = Math.abs(expectedTotal - item.commercial_total_price) > 0.05;
+                return (
+                  <div
+                    key={idx}
+                    className={`rounded-xl border p-4 ${
+                      needsConversion
+                        ? 'border-amber-500/60 bg-amber-500/10'
+                        : isRowInconsistent
+                          ? 'border-rose-500/40 bg-rose-500/5'
+                          : 'border-slate-800/80 bg-slate-950/30'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="min-w-0">
+                        <div className="text-[10px] text-slate-500 uppercase font-bold">Item {idx + 1}</div>
+                        <input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) => handleItemChange(idx, 'description', e.target.value)}
+                          className="mt-1 w-full min-w-[260px] bg-slate-950 border border-slate-800 focus:border-brand-500 rounded-lg px-3 py-2 text-sm text-white focus:outline-none font-semibold"
+                        />
+                        {item.packaging_warning && (
+                          <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-300 font-semibold">
+                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                            {item.packaging_warning}
+                          </div>
+                        )}
+                      </div>
 
-                    return (
-                      <tr 
-                        key={idx} 
-                        className={`group transition-colors ${
-                          isRowInconsistent 
-                            ? 'bg-rose-500/5 hover:bg-rose-500/10' 
-                            : 'hover:bg-slate-900/10'
-                        }`}
+                      <button
+                        onClick={() => handleRemoveItem(idx)}
+                        className="text-slate-500 hover:text-rose-400 p-2 rounded-lg hover:bg-slate-900 transition-colors"
+                        title="Remover item"
                       >
-                        {/* Link product / Code / NCM / CFOP inputs */}
-                        <td className="py-3 pr-2">
-                          <div className="space-y-1">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.35fr] gap-4">
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <label className="space-y-1">
+                            <span className="text-[10px] text-slate-500 uppercase font-semibold">Código</span>
                             <input
                               type="text"
                               value={item.product_code || ''}
                               onChange={(e) => handleItemChange(idx, 'product_code', e.target.value)}
-                              placeholder="Código"
-                              className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-2 py-1 text-[10px] text-white focus:outline-none ${
-                                isRowInconsistent ? 'border-rose-500/20' : 'border-slate-800'
-                              }`}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
                             />
-                            
-                            <div className="grid grid-cols-2 gap-1">
-                              <input
-                                type="text"
-                                value={item.ncm || ''}
-                                onChange={(e) => handleItemChange(idx, 'ncm', e.target.value)}
-                                placeholder="NCM"
-                                className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-1.5 py-0.5 text-[9px] text-white focus:outline-none ${
-                                  isRowInconsistent ? 'border-rose-500/20' : 'border-slate-800'
-                                }`}
-                              />
-                              <input
-                                type="text"
-                                value={item.cfop || ''}
-                                onChange={(e) => handleItemChange(idx, 'cfop', e.target.value)}
-                                placeholder="CFOP"
-                                className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-1.5 py-0.5 text-[9px] text-white focus:outline-none ${
-                                  isRowInconsistent ? 'border-rose-500/20' : 'border-slate-800'
-                                }`}
-                              />
-                            </div>
-
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-[10px] text-slate-500 uppercase font-semibold">NCM</span>
+                            <input
+                              type="text"
+                              value={item.ncm || ''}
+                              onChange={(e) => handleItemChange(idx, 'ncm', e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-[10px] text-slate-500 uppercase font-semibold">CFOP</span>
+                            <input
+                              type="text"
+                              value={item.cfop || ''}
+                              onChange={(e) => handleItemChange(idx, 'cfop', e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <span className="text-[10px] text-slate-500 uppercase font-semibold">Vínculo</span>
                             <select
                               onChange={(e) => handleLinkProduct(idx, e.target.value)}
                               value={matchedProd ? matchedProd.id : ''}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[9px] text-slate-400 focus:outline-none mt-1"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none"
                             >
-                              <option value="">{matchedProd ? '✓ Vinculado' : '⚡ Criar novo produto'}</option>
+                              <option value="">{matchedProd ? 'Vinculado' : 'Criar novo'}</option>
                               {availableProducts.map(p => (
                                 <option key={p.id} value={p.id}>{p.name} ({p.code || 'S/C'})</option>
                               ))}
                             </select>
-                          </div>
-                        </td>
+                          </label>
+                        </div>
 
-                        {/* Description */}
-                        <td className="py-3 pr-2">
+                        <label className={`flex items-start gap-2 text-xs ${isPackaging ? 'text-amber-200' : 'text-slate-600'}`}>
                           <input
-                            type="text"
-                            value={item.description}
-                            onChange={(e) => handleItemChange(idx, 'description', e.target.value)}
-                            className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-2 py-1 text-[10px] text-white focus:outline-none font-medium ${
-                              isRowInconsistent ? 'border-rose-500/25' : 'border-slate-800'
-                            }`}
+                            type="checkbox"
+                            checked={Boolean(item.save_conversion_to_product)}
+                            disabled={!isPackaging}
+                            onChange={(e) => handleItemChange(idx, 'save_conversion_to_product', e.target.checked)}
+                            className="mt-0.5 h-4 w-4 accent-amber-500"
                           />
-                          <span className="text-[8px] text-slate-500 mt-0.5 block truncate max-w-[200px]">
-                            Norm: {item.normalized_description || 'n/a'}
-                          </span>
-                        </td>
+                          <span>Salvar essa conversão no cadastro do produto</span>
+                        </label>
+                      </div>
 
-                        {/* Commercial Vision */}
-                        {/* Unit / Emb */}
-                        <td className="py-3 px-2 text-center border-l border-slate-800/50">
-                          <input
-                            type="text"
-                            value={item.commercial_unit || ''}
-                            maxLength={3}
-                            onChange={(e) => handleItemChange(idx, 'commercial_unit', e.target.value.toUpperCase())}
-                            className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-1.5 py-1 text-[10px] text-white text-center focus:outline-none ${
-                              isRowInconsistent ? 'border-rose-500/25' : 'border-slate-800'
-                            }`}
-                          />
-                        </td>
-
-                        {/* Qtd */}
-                        <td className="py-3 px-2 text-center">
-                          <input
-                            type="number"
-                            step="any"
-                            value={item.commercial_quantity || ''}
-                            onChange={(e) => handleItemChange(idx, 'commercial_quantity', e.target.value)}
-                            className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-1.5 py-1 text-[10px] text-white text-center focus:outline-none ${
-                              isRowInconsistent ? 'border-rose-500/40 text-rose-300 font-semibold' : 'border-slate-800'
-                            }`}
-                          />
-                        </td>
-
-                        {/* Unit Price (Caixa) */}
-                        <td className="py-3 px-2 text-right">
-                          <input
-                            type="number"
-                            step="any"
-                            value={item.commercial_unit_price || ''}
-                            onChange={(e) => handleItemChange(idx, 'commercial_unit_price', e.target.value)}
-                            className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-2 py-1 text-[10px] text-white text-right focus:outline-none ${
-                              isRowInconsistent ? 'border-rose-500/40 text-rose-300 font-semibold' : 'border-slate-800'
-                            }`}
-                          />
-                        </td>
-
-                        {/* Total Price */}
-                        <td className="py-3 px-2 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {isRowInconsistent && (
-                              <span title={`Qtd * Unitário = R$ ${expectedTotal.toFixed(2)} (Diferença de R$ ${Math.abs(expectedTotal - item.commercial_total_price).toFixed(2)})`}>
-                                <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                        <div className="rounded-lg border border-slate-800 bg-slate-900/35 p-3 space-y-3">
+                          <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Comercial da nota</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="space-y-1">
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Unidade</span>
+                              <input
+                                type="text"
+                                value={item.commercial_unit || ''}
+                                maxLength={7}
+                                onChange={(e) => handleItemChange(idx, 'commercial_unit', e.target.value.toUpperCase())}
+                                className={`w-full bg-slate-950 border rounded-lg px-3 py-2 text-sm text-white text-center font-bold focus:outline-none ${
+                                  needsConversion ? 'border-amber-500 text-amber-200' : 'border-slate-800 focus:border-brand-500'
+                                }`}
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Quantidade</span>
+                              <input
+                                type="number"
+                                step="any"
+                                value={item.commercial_quantity || ''}
+                                onChange={(e) => handleItemChange(idx, 'commercial_quantity', e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none"
+                              />
+                            </label>
+                            <label className="space-y-1 col-span-2">
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">
+                                {isPackaging ? 'Preço da embalagem' : 'Preço unitário comercial'}
                               </span>
-                            )}
+                              <input
+                                type="number"
+                                step="any"
+                                value={item.commercial_unit_price || ''}
+                                onChange={(e) => handleItemChange(idx, 'commercial_unit_price', e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none"
+                              />
+                            </label>
+                            <label className="space-y-1 col-span-2">
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Total comercial</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={item.commercial_total_price || ''}
+                                onChange={(e) => handleItemChange(idx, 'commercial_total_price', e.target.value)}
+                                className={`w-full bg-slate-950 border rounded-lg px-3 py-2 text-sm text-white text-right font-bold focus:outline-none ${
+                                  isRowInconsistent ? 'border-rose-500 text-rose-300' : 'border-slate-800 focus:border-brand-500'
+                                }`}
+                              />
+                            </label>
+                          </div>
+                          {isRowInconsistent && (
+                            <div className="text-[10px] text-rose-300 font-semibold">
+                              Quantidade x preço = {formatCurrency(expectedTotal)}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 space-y-3">
+                          <div className="text-[10px] text-amber-300 uppercase font-bold tracking-wide">Conversão da embalagem</div>
+                          <label className="space-y-1 block">
+                            <span className="text-[10px] text-slate-500 uppercase font-semibold">Unidades dentro da embalagem</span>
                             <input
                               type="number"
-                              step="0.01"
-                              value={item.commercial_total_price || ''}
-                              onChange={(e) => handleItemChange(idx, 'commercial_total_price', e.target.value)}
-                              className={`w-20 bg-slate-950 border focus:border-brand-500 rounded px-2 py-1 text-[10px] text-white text-right focus:outline-none font-semibold ${
-                                isRowInconsistent ? 'border-rose-500 text-rose-400 font-bold' : 'border-slate-800 text-slate-300'
+                              step="1"
+                              min="1"
+                              value={toNumber(item.units_per_package) > 0 ? item.units_per_package : ''}
+                              placeholder="Ex: 24"
+                              onChange={(e) => handleItemChange(idx, 'units_per_package', e.target.value)}
+                              className={`w-full bg-slate-950 border rounded-lg px-3 py-2 text-base text-center font-bold focus:outline-none ${
+                                needsConversion
+                                  ? 'border-amber-400 text-amber-200 bg-amber-950/20'
+                                  : 'border-amber-500/40 text-amber-200 focus:border-amber-400'
                               }`}
                             />
+                          </label>
+                          <div className="text-[11px] text-slate-400 leading-relaxed">
+                            Quantidade interna = quantidade comercial x unidades por embalagem.
                           </div>
-                        </td>
+                        </div>
 
-                        {/* Internal Vision */}
-                        {/* Un/Emb */}
-                        <td className="py-3 px-2 text-center border-l border-slate-800/50 bg-brand-900/5">
-                          <input
-                            type="number"
-                            step="1"
-                            value={item.units_per_package || ''}
-                            placeholder="1"
-                            onChange={(e) => handleItemChange(idx, 'units_per_package', parseInt(e.target.value) || '')}
-                            className="w-full bg-slate-950 border border-brand-500/50 focus:border-brand-400 rounded px-1 py-1 text-[10px] text-brand-300 text-center font-bold focus:outline-none shadow-inner shadow-brand-500/10"
-                          />
-                        </td>
-
-                        {/* Qtd Int. */}
-                        <td className="py-3 px-2 text-center bg-brand-900/5">
-                          <div className="w-full bg-slate-950/50 border border-slate-800/50 rounded px-2 py-1 text-[10px] text-emerald-400/80 text-center font-mono">
-                            {item.internal_quantity || 0}
+                        <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3 space-y-3">
+                          <div className="text-[10px] text-emerald-300 uppercase font-bold tracking-wide">Resultado interno</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Quantidade interna</span>
+                              <div className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 text-sm text-emerald-300 text-right font-bold">
+                                {toNumber(item.internal_quantity)}
+                              </div>
+                            </div>
+                            <label className="space-y-1">
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Unidade interna</span>
+                              <input
+                                type="text"
+                                value={item.internal_unit || 'UN'}
+                                maxLength={7}
+                                onChange={(e) => handleItemChange(idx, 'internal_unit', e.target.value.toUpperCase())}
+                                className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded-lg px-3 py-2 text-sm text-white text-center font-bold focus:outline-none"
+                              />
+                            </label>
+                            <div className="space-y-1 col-span-2">
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Preço por unidade interna</span>
+                              <div className="w-full bg-slate-950/80 border border-emerald-500/40 rounded-lg px-3 py-2 text-base text-emerald-300 text-right font-bold">
+                                {formatCurrency(toNumber(item.internal_unit_price))}
+                              </div>
+                            </div>
                           </div>
-                        </td>
-
-                        {/* Un. Int. */}
-                        <td className="py-3 px-2 text-center bg-brand-900/5">
-                          <input
-                            type="text"
-                            value={item.internal_unit || 'UN'}
-                            maxLength={3}
-                            onChange={(e) => handleItemChange(idx, 'internal_unit', e.target.value.toUpperCase())}
-                            className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded px-1.5 py-1 text-[10px] text-white text-center focus:outline-none"
-                          />
-                        </td>
-
-                        {/* Preço Un. (Calculado) */}
-                        <td className="py-3 px-2 text-right bg-brand-900/5">
-                          <div className="w-full bg-slate-950/80 border border-emerald-500/30 rounded px-2 py-1 text-[11px] text-emerald-400 text-right font-bold shadow-sm shadow-emerald-500/10">
-                            R$ {item.internal_unit_price ? item.internal_unit_price.toFixed(2) : item.commercial_unit_price.toFixed(2)}
-                          </div>
-                        </td>
-
-                        {/* Delete button */}
-                        <td className="py-3 text-center">
-                          <button
-                            onClick={() => handleRemoveItem(idx)}
-                            className="text-slate-500 hover:text-rose-400 p-1 rounded transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-
           </div>
         </div>
-
       </div>
 
-
-      {/* Save / Cancel buttons */}
       <div className="flex justify-end items-center gap-3 border-t border-slate-800/80 pt-6">
         <button
           onClick={onCancel}
@@ -655,13 +700,16 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
         </button>
         <button
           onClick={handleSaveClick}
-          className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-brand-600/10 transition-all hover:translate-y-[-1px]"
+          className={`flex items-center gap-1.5 px-5 py-2.5 text-white rounded-xl text-xs font-semibold shadow-lg transition-all hover:translate-y-[-1px] ${
+            hasBlockingRows
+              ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/10'
+              : 'bg-brand-600 hover:bg-brand-500 shadow-brand-600/10'
+          }`}
         >
           <Check className="w-4 h-4" />
           <span>Salvar Pedido na Base</span>
         </button>
       </div>
-
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { 
+import {
   BarChart3, 
   FileSpreadsheet, 
   Printer, 
@@ -9,6 +9,7 @@ import {
   Filter
 } from 'lucide-react';
 import { db } from '../services/db';
+import { formatCurrency, parseFormattedCurrency } from '../services/formatters';
 
 type ReportType = 
   | 'revenue_by_customer'
@@ -60,11 +61,11 @@ export function ReportsPage() {
             col2: c.document || 'S/D',
             col3: String(c.total_orders),
             col4: c.last_purchase_date || 'n/a',
-            col5: `R$ ${c.total_amount.toFixed(2)}`
+            col5: formatCurrency(c.total_amount)
           }))
           .sort((a, b) => {
-            const valA = parseFloat(a.col5.replace('R$ ', ''));
-            const valB = parseFloat(b.col5.replace('R$ ', ''));
+            const valA = parseFormattedCurrency(a.col5);
+            const valB = parseFormattedCurrency(b.col5);
             return valB - valA;
           });
         break;
@@ -88,12 +89,12 @@ export function ReportsPage() {
             col1: item.name,
             col2: item.code,
             col3: String(item.qty),
-            col4: `R$ ${(item.amt / item.qty).toFixed(2)}`,
-            col5: `R$ ${item.amt.toFixed(2)}`
+            col4: formatCurrency(item.amt / item.qty),
+            col5: formatCurrency(item.amt)
           }))
           .sort((a, b) => {
-            const valA = parseFloat(a.col5.replace('R$ ', ''));
-            const valB = parseFloat(b.col5.replace('R$ ', ''));
+            const valA = parseFormattedCurrency(a.col5);
+            const valB = parseFormattedCurrency(b.col5);
             return valB - valA;
           });
         break;
@@ -149,8 +150,8 @@ export function ReportsPage() {
           return {
             col1: prod.name,
             col2: prod.code || 'S/C',
-            col3: `R$ ${prev.toFixed(2)}`,
-            col4: `R$ ${latest.toFixed(2)}`,
+            col3: formatCurrency(prev),
+            col4: formatCurrency(latest),
             col5: `+${pct.toFixed(1)}%`
           };
         })
@@ -181,8 +182,8 @@ export function ReportsPage() {
           return {
             col1: prod.name,
             col2: prod.code || 'S/C',
-            col3: `R$ ${prev.toFixed(2)}`,
-            col4: `R$ ${latest.toFixed(2)}`,
+            col3: formatCurrency(prev),
+            col4: formatCurrency(latest),
             col5: `${pct.toFixed(1)}%`
           };
         })
@@ -211,7 +212,7 @@ export function ReportsPage() {
             col2: c.document || 'S/D',
             col3: c.last_purchase_date,
             col4: `${days} dias`,
-            col5: `R$ ${c.total_amount.toFixed(2)}`
+            col5: formatCurrency(c.total_amount)
           };
         })
         .filter(Boolean)
@@ -236,16 +237,16 @@ export function ReportsPage() {
 
           return {
             col1: c.name,
-            col2: `R$ ${c.total_amount.toFixed(2)}`,
+            col2: formatCurrency(c.total_amount),
             col3: String(c.total_orders),
             col4: freq > 0 ? `${freq} dias` : 'N/A',
-            col5: `R$ ${ticket.toFixed(2)}`
+            col5: formatCurrency(ticket)
           };
         })
         .filter(Boolean)
         .sort((a, b) => {
-          const ticketA = parseFloat(a!.col5.replace('R$ ', ''));
-          const ticketB = parseFloat(b!.col5.replace('R$ ', ''));
+          const ticketA = parseFormattedCurrency(a!.col5);
+          const ticketB = parseFormattedCurrency(b!.col5);
           return ticketB - ticketA;
         }) as ReportRow[];
         break;
@@ -276,8 +277,8 @@ export function ReportsPage() {
     document.body.removeChild(link);
   };
 
-  // PDF Print Trigger
-  const handlePrintPDF = () => {
+  // Print trigger
+  const handlePrintReport = () => {
     window.print();
   };
 
@@ -287,7 +288,7 @@ export function ReportsPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
         <div>
           <h2 className="text-2xl font-bold font-outfit text-white tracking-wide">Relatórios Comerciais</h2>
-          <p className="text-sm text-slate-400 mt-1">Gere planilhas comerciais, analise flutuações e exporte para CSV/Excel ou PDF para impressão.</p>
+          <p className="text-sm text-slate-400 mt-1">Gere planilhas comerciais, analise flutuações e exporte para CSV/Excel ou use a impressão do navegador.</p>
         </div>
       </div>
 
@@ -321,11 +322,11 @@ export function ReportsPage() {
             <span>Planilha Excel / CSV</span>
           </button>
           <button
-            onClick={handlePrintPDF}
+            onClick={handlePrintReport}
             className="flex-1 md:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-brand-600/10 transition-all"
           >
             <Printer className="w-4 h-4" />
-            <span>Imprimir PDF</span>
+            <span>Imprimir</span>
           </button>
         </div>
       </div>

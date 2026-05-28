@@ -25,14 +25,13 @@ export interface XmlFetchResult {
 // ─────────────────────────────────────────────────────────────────
 
 /**
- * Tries multiple strategies to find a 44-digit NF-e access key in the
- * text extracted from a PDF.
+ * Tries multiple strategies to find a 44-digit NF-e access key in text.
  */
-export function extractAccessKeyFromPdf(text: string): AccessKeyResult | null {
+export function extractAccessKeyFromText(text: string): AccessKeyResult | null {
   console.log('[nfeAccessKey] FULL TEXT TO PARSE:', text);
   const candidates: string[] = [];
 
-  // Strategy A – 44 continuous digits (most common in digital PDFs)
+  // Strategy A - 44 continuous digits
   const stripped = text.replace(/\s+/g, '');
   const contiguous = stripped.match(/\d{44}/g);
   if (contiguous) candidates.push(...contiguous);
@@ -47,7 +46,7 @@ export function extractAccessKeyFromPdf(text: string): AccessKeyResult | null {
   }
 
   // Strategy C – 11 groups of 4 digits separated by spaces (DANFE layout)
-  const blockPattern = /(\d{4}[\s\-]){10}\d{4}/g;
+  const blockPattern = /(\d{4}[\s-]){10}\d{4}/g;
   const blocks = text.match(blockPattern);
   if (blocks) {
     for (const b of blocks) {
@@ -67,7 +66,7 @@ export function extractAccessKeyFromPdf(text: string): AccessKeyResult | null {
     }
   }
 
-  // Strategy E - aggressive sliding window over all digits (for highly fragmented PDFs)
+  // Strategy E - aggressive sliding window over all digits
   const allDigits = text.replace(/\D/g, '');
   console.log('[nfeAccessKey] ALL DIGITS EXTRACTED:', allDigits);
   

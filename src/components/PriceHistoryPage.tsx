@@ -9,6 +9,7 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { db } from '../services/db';
 import type { Product, Customer } from '../services/db';
+import { formatCurrency, formatSignedCurrency } from '../services/formatters';
 
 export function PriceHistoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -232,7 +233,7 @@ export function PriceHistoryPage() {
                       <YAxis stroke="rgba(255,255,255,0.3)" fontSize={10} />
                       <Tooltip 
                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '12px', color: '#f8fafc' }}
-                        formatter={(value, _, props) => [`R$ ${parseFloat(value as string).toFixed(2)}`, `${props.payload.Cliente} (${props.payload.Qtd} un)`]}
+                        formatter={(value, _, props) => [formatCurrency(parseFloat(value as string)), `${props.payload.Cliente} (${props.payload.Qtd} un)`]}
                       />
                       <Line type="monotone" dataKey="Preço" stroke="#6366f1" strokeWidth={2.5} activeDot={{ r: 6 }} dot={{ strokeWidth: 2 }} />
                     </LineChart>
@@ -258,11 +259,11 @@ export function PriceHistoryPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-900 text-center">
                       <span className="text-[9px] text-slate-500 uppercase block font-semibold">Menor Histórico</span>
-                      <span className="text-sm font-bold text-white mt-1 block">R$ {Math.min(...filteredHistories.map(h => h.internal_unit_price)).toFixed(2)}</span>
+                      <span className="text-sm font-bold text-white mt-1 block">{formatCurrency(Math.min(...filteredHistories.map(h => h.internal_unit_price)))}</span>
                     </div>
                     <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-900 text-center">
                       <span className="text-[9px] text-slate-500 uppercase block font-semibold">Maior Histórico</span>
-                      <span className="text-sm font-bold text-white mt-1 block">R$ {Math.max(...filteredHistories.map(h => h.internal_unit_price)).toFixed(2)}</span>
+                      <span className="text-sm font-bold text-white mt-1 block">{formatCurrency(Math.max(...filteredHistories.map(h => h.internal_unit_price)))}</span>
                     </div>
                   </div>
 
@@ -285,7 +286,7 @@ export function PriceHistoryPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Preço atual:</span>
-                      <span className="font-bold text-white">R$ {filteredHistories[filteredHistories.length - 1].internal_unit_price.toFixed(2)}</span>
+                      <span className="font-bold text-white">{formatCurrency(filteredHistories[filteredHistories.length - 1].internal_unit_price)}</span>
                     </div>
                   </div>
                 </div>
@@ -296,6 +297,59 @@ export function PriceHistoryPage() {
               )}
             </div>
 
+          </div>
+
+          {/* Detailed conversion history */}
+          <div className="glass-panel rounded-2xl p-5 space-y-4">
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+              <Tag className="w-4 h-4 text-brand-500" />
+              Histórico Detalhado de Conversões
+            </h4>
+
+            <div className="overflow-x-auto no-scrollbar border border-slate-800/40 rounded-xl">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold bg-slate-900/30">
+                    <th className="py-2.5 px-3">Data</th>
+                    <th className="py-2.5 px-3">Cliente</th>
+                    <th className="py-2.5 px-3 text-center border-l border-slate-800/50">Un. Comercial</th>
+                    <th className="py-2.5 px-3 text-center">Qtd Comercial</th>
+                    <th className="py-2.5 px-3 text-right">Preço Emb.</th>
+                    <th className="py-2.5 px-3 text-right">Total Comercial</th>
+                    <th className="py-2.5 px-3 text-center border-l border-brand-900/20 bg-brand-900/10 text-brand-400">Un/Emb</th>
+                    <th className="py-2.5 px-3 text-center bg-brand-900/10 text-brand-400">Qtd Interna</th>
+                    <th className="py-2.5 px-3 text-center bg-brand-900/10 text-brand-400">Un. Interna</th>
+                    <th className="py-2.5 px-3 text-right bg-brand-900/10 text-brand-400">Preço Interno</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/20">
+                  {filteredHistories.map((history) => {
+                    const customer = customers.find(c => c.id === history.customer_id);
+                    return (
+                      <tr key={history.id} className="hover:bg-slate-900/10">
+                        <td className="py-2.5 px-3 text-slate-400 font-mono">{history.date}</td>
+                        <td className="py-2.5 px-3 font-medium text-slate-200">{customer?.name || 'Cliente'}</td>
+                        <td className="py-2.5 px-3 text-center text-slate-400 font-bold border-l border-slate-800/50">{history.commercial_unit || 'UN'}</td>
+                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{history.commercial_quantity}</td>
+                        <td className="py-2.5 px-3 text-right text-slate-300">{formatCurrency(history.commercial_unit_price)}</td>
+                        <td className="py-2.5 px-3 text-right text-slate-300">{formatCurrency(history.commercial_total_price)}</td>
+                        <td className="py-2.5 px-3 text-center text-amber-300 font-bold border-l border-brand-900/20 bg-brand-900/5">{history.units_per_package}</td>
+                        <td className="py-2.5 px-3 text-center text-emerald-400/80 font-mono bg-brand-900/5">{history.internal_quantity}</td>
+                        <td className="py-2.5 px-3 text-center text-emerald-500 font-bold bg-brand-900/5">{history.internal_unit || 'UN'}</td>
+                        <td className="py-2.5 px-3 text-right font-outfit text-emerald-400 font-bold bg-brand-900/5">{formatCurrency(history.internal_unit_price)}</td>
+                      </tr>
+                    );
+                  })}
+                  {filteredHistories.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="text-center py-8 text-slate-500 text-xs">
+                        Nenhum histórico encontrado para os filtros ativos.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Comparisons Table */}
@@ -328,13 +382,13 @@ export function PriceHistoryPage() {
                         <td className="py-2.5 px-4 text-center text-slate-400 font-mono">{item.lastPurchaseDate}</td>
                         <td className="py-2.5 px-4 text-center text-slate-300 font-mono">{item.quantity} {activeProduct.default_internal_unit || 'UN'}</td>
                         <td className="py-2.5 px-4 text-right text-slate-400">
-                          {item.prevPrice !== null ? `R$ ${item.prevPrice.toFixed(2)}` : 'Primeira compra'}
+                          {item.prevPrice !== null ? formatCurrency(item.prevPrice) : 'Primeira compra'}
                         </td>
-                        <td className="py-2.5 px-4 text-right font-outfit text-white font-bold">R$ {item.currentPrice.toFixed(2)}</td>
+                        <td className="py-2.5 px-4 text-right font-outfit text-white font-bold">{formatCurrency(item.currentPrice)}</td>
                         <td className={`py-2.5 px-4 text-right ${
                           isUp ? 'text-rose-400' : isDown ? 'text-emerald-400' : 'text-slate-400'
                         }`}>
-                          {item.prevPrice !== null ? `${isUp ? '+' : ''}R$ ${item.diffAbs.toFixed(2)}` : '-'}
+                          {item.prevPrice !== null ? formatSignedCurrency(item.diffAbs) : '-'}
                         </td>
                         <td className={`py-2.5 px-4 text-right font-semibold ${
                           isUp ? 'text-rose-400 bg-rose-500/5' : isDown ? 'text-emerald-400 bg-emerald-500/5' : 'text-slate-400'

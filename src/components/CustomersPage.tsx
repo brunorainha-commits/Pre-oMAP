@@ -17,6 +17,7 @@ import {
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { db } from '../services/db';
 import type { Customer } from '../services/db';
+import { formatCurrency } from '../services/formatters';
 
 
 interface CustomersPageProps {
@@ -269,7 +270,7 @@ export function CustomersPage({ userRole, selectedCustomerId, setSelectedCustome
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="glass-panel rounded-2xl p-4 text-center">
                 <span className="text-[10px] text-slate-500 uppercase font-semibold">Total Comprado</span>
-                <div className="text-base font-bold font-outfit text-white mt-1">R$ {cust.total_amount.toFixed(2)}</div>
+                <div className="text-base font-bold font-outfit text-white mt-1">{formatCurrency(cust.total_amount)}</div>
               </div>
               <div className="glass-panel rounded-2xl p-4 text-center">
                 <span className="text-[10px] text-slate-500 uppercase font-semibold">Total Pedidos</span>
@@ -277,7 +278,7 @@ export function CustomersPage({ userRole, selectedCustomerId, setSelectedCustome
               </div>
               <div className="glass-panel rounded-2xl p-4 text-center">
                 <span className="text-[10px] text-slate-500 uppercase font-semibold">Ticket Médio</span>
-                <div className="text-base font-bold font-outfit text-white mt-1">R$ {cust.total_orders > 0 ? (cust.total_amount / cust.total_orders).toFixed(2) : '0.00'}</div>
+                <div className="text-base font-bold font-outfit text-white mt-1">{formatCurrency(cust.total_orders > 0 ? cust.total_amount / cust.total_orders : 0)}</div>
               </div>
               <div className="glass-panel rounded-2xl p-4 text-center">
                 <span className="text-[10px] text-slate-500 uppercase font-semibold">Frequência Média</span>
@@ -343,8 +344,8 @@ export function CustomersPage({ userRole, selectedCustomerId, setSelectedCustome
                           <td className="py-2.5 px-3 font-medium text-slate-200">{prodName}</td>
                           <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{ph.date}</td>
                           <td className="py-2.5 px-3 text-center text-slate-300">{ph.internal_quantity}</td>
-                          <td className="py-2.5 px-3 text-right text-slate-300">R$ {ph.internal_unit_price.toFixed(2)}</td>
-                          <td className="py-2.5 px-3 text-right font-outfit text-white font-semibold">R$ {ph.commercial_total_price.toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-right text-slate-300">{formatCurrency(ph.internal_unit_price)}</td>
+                          <td className="py-2.5 px-3 text-right font-outfit text-white font-semibold">{formatCurrency(ph.commercial_total_price)}</td>
                         </tr>
                       );
                     })}
@@ -378,7 +379,7 @@ export function CustomersPage({ userRole, selectedCustomerId, setSelectedCustome
                       <span className="text-[10px] text-slate-500 mt-0.5 block">Emissão: {o.issue_date} • {o.source_file_type.toUpperCase()}</span>
                     </div>
                     <div className="text-right">
-                      <div className="font-outfit font-bold text-white">R$ {o.total_amount.toFixed(2)}</div>
+                      <div className="font-outfit font-bold text-white">{formatCurrency(o.total_amount)}</div>
                     </div>
                   </div>
                 ))}
@@ -497,10 +498,10 @@ export function CustomersPage({ userRole, selectedCustomerId, setSelectedCustome
                       {cust.total_orders}
                     </td>
                     <td className="py-3 px-4 text-right text-slate-300">
-                      R$ {ticket.toFixed(2)}
+                      {formatCurrency(ticket)}
                     </td>
                     <td className="py-3 px-4 text-right font-outfit text-white font-bold">
-                      R$ {cust.total_amount.toFixed(2)}
+                      {formatCurrency(cust.total_amount)}
                     </td>
                     <td className="py-3 px-4 text-center text-slate-400 font-mono">
                       {cust.last_purchase_date || 'Sem compras'}

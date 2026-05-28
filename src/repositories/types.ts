@@ -162,6 +162,9 @@ export interface NormalizedInvoice {
     internal_unit: string;
     internal_quantity: number;
     internal_unit_price: number;
+    packaging_requires_review?: boolean;
+    packaging_warning?: string | null;
+    save_conversion_to_product?: boolean;
 
     discount: number | null;
     

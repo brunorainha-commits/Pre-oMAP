@@ -23,6 +23,7 @@ import {
 } from 'recharts';
 import { db } from '../services/db';
 import type { CommercialAlert } from '../services/alerts';
+import { formatCurrency } from '../services/formatters';
 
 interface DashboardProps {
   setCurrentTab: (tab: string) => void;
@@ -158,7 +159,7 @@ export function Dashboard({
             </div>
           </div>
           <div className="mt-3">
-            <h3 className="text-xl font-bold text-white font-outfit">R$ {totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+            <h3 className="text-xl font-bold text-white font-outfit">{formatCurrency(totalRevenue)}</h3>
             <span className="text-[10px] text-accent-emerald flex items-center gap-0.5 mt-1 font-medium">
               <TrendingUp className="w-3 h-3" /> Faturamento consolidado
             </span>
@@ -222,7 +223,7 @@ export function Dashboard({
             </div>
           </div>
           <div className="mt-3">
-            <h3 className="text-xl font-bold text-white font-outfit">R$ {averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+            <h3 className="text-xl font-bold text-white font-outfit">{formatCurrency(averageTicket)}</h3>
             <span className="text-[10px] text-slate-400 flex items-center gap-0.5 mt-1">
               Valor médio por pedido/nota
             </span>
@@ -422,7 +423,7 @@ export function Dashboard({
                       </span>
                     </div>
                     <div className="shrink-0 text-right">
-                      <div className="text-xs font-bold text-white font-outfit">R$ {order.total_amount.toFixed(2)}</div>
+                      <div className="text-xs font-bold text-white font-outfit">{formatCurrency(order.total_amount)}</div>
                       <span className="text-[9px] text-accent-cyan flex items-center justify-end font-medium mt-0.5">
                         Ver <ChevronRight className="w-3 h-3" />
                       </span>

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { db } from '../services/db';
 import type { Order } from '../services/db';
+import { formatCurrency, formatSignedCurrency } from '../services/formatters';
 
 
 interface OrdersPageProps {
@@ -22,8 +23,9 @@ interface OrdersPageProps {
 export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: OrdersPageProps) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState('all'); // all, xml, pdf
+  const [filterType, setFilterType] = useState('all'); // all, xml
   const [filterCustomer, setFilterCustomer] = useState('all');
+  const [showRaw, setShowRaw] = useState(false);
 
   const isAdmin = userRole === 'admin';
 
@@ -88,9 +90,6 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
     const customer = db.getCustomerById(order.customer_id);
     const items = db.getOrderItemsByOrder(order.id);
     
-    // Toggle state for showing original raw data
-    const [showRaw, setShowRaw] = useState(false);
-
     const itemsSum = items.reduce((sum, item) => sum + item.commercial_total_price, 0);
 
     return (
@@ -193,19 +192,19 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
               <div className="space-y-2 text-xs text-slate-300">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Soma Itens:</span>
-                  <span>R$ {itemsSum.toFixed(2)}</span>
+                  <span>{formatCurrency(itemsSum)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Desconto:</span>
-                  <span className="text-rose-400">-R$ {(order.discount_amount || 0).toFixed(2)}</span>
+                  <span className="text-rose-400">{formatCurrency(-(order.discount_amount || 0))}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Frete:</span>
-                  <span className="text-emerald-400">+R$ {(order.shipping_amount || 0).toFixed(2)}</span>
+                  <span className="text-emerald-400">{formatSignedCurrency(order.shipping_amount || 0)}</span>
                 </div>
                 <div className="flex justify-between items-center border-t border-slate-800 pt-2 font-bold text-sm">
                   <span className="text-slate-200">Faturamento Final:</span>
-                  <span className="text-white font-outfit">R$ {order.total_amount.toFixed(2)}</span>
+                  <span className="text-white font-outfit">{formatCurrency(order.total_amount)}</span>
                 </div>
               </div>
             </div>
@@ -243,11 +242,11 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
                         <td className="py-2.5 px-3 font-medium text-slate-200">{item.description}</td>
                         <td className="py-2.5 px-3 text-center text-slate-300 font-mono border-l border-slate-800/50">{item.commercial_quantity}</td>
                         <td className="py-2.5 px-3 text-center text-slate-400 font-bold">{item.commercial_unit || 'UN'}</td>
-                        <td className="py-2.5 px-3 text-right text-slate-300">R$ {item.commercial_unit_price.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right text-slate-300">{formatCurrency(item.commercial_unit_price)}</td>
                         <td className="py-2.5 px-3 text-center text-emerald-400/80 font-mono border-l border-brand-900/20 bg-brand-900/5">{item.internal_quantity}</td>
                         <td className="py-2.5 px-3 text-center text-emerald-500 font-bold bg-brand-900/5">{item.internal_unit || 'UN'}</td>
-                        <td className="py-2.5 px-3 text-right text-emerald-400 bg-brand-900/5">R$ {(item.internal_unit_price || item.commercial_unit_price).toFixed(2)}</td>
-                        <td className="py-2.5 px-3 text-right font-outfit text-white font-bold">R$ {item.commercial_total_price.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right text-emerald-400 bg-brand-900/5">{formatCurrency(item.internal_unit_price || item.commercial_unit_price)}</td>
+                        <td className="py-2.5 px-3 text-right font-outfit text-white font-bold">{formatCurrency(item.commercial_total_price)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -267,17 +266,10 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
 
               {showRaw && (
                 <div className="bg-slate-950 border border-slate-900 rounded-xl p-4 text-[10px] font-mono text-slate-400 max-h-72 overflow-y-auto overflow-x-auto whitespace-pre no-scrollbar leading-relaxed">
-                  {order.source_file_type === 'xml' ? (
-                    <div>
-                      <div className="text-slate-500 border-b border-slate-800 pb-1.5 mb-2 font-semibold">XML estruturado recuperado da NF-e:</div>
-                      {db.getUploads().find(u => u.file_name === order.source_file_name)?.extracted_data?.raw_xml || `Chave XML: ${order.invoice_key}\nNenhum log bruto salvo no storage local.`}
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="text-slate-500 border-b border-slate-800 pb-1.5 mb-2 font-semibold">Texto selecionável extraído via parser do PDF:</div>
-                      {db.getUploads().find(u => u.file_name === order.source_file_name)?.extracted_data?.raw_text || 'Dados de texto bruto não indexados no banco local.'}
-                    </div>
-                  )}
+                  <div>
+                    <div className="text-slate-500 border-b border-slate-800 pb-1.5 mb-2 font-semibold">XML estruturado recuperado da NF-e:</div>
+                    {db.getUploads().find(u => u.file_name === order.source_file_name)?.extracted_data?.raw_xml || `Chave XML: ${order.invoice_key}\nNenhum log bruto salvo no storage local.`}
+                  </div>
                 </div>
               )}
             </div>
@@ -321,7 +313,6 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
         >
           <option value="all">Formato Nota (Todos)</option>
           <option value="xml">Apenas XML</option>
-          <option value="pdf">Apenas PDF</option>
         </select>
 
         {/* Customer Filter */}
@@ -379,10 +370,10 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
                       {order.issue_date}
                     </td>
                     <td className="py-3 px-4 text-right text-slate-400 font-mono">
-                      -R$ {(order.discount_amount || 0).toFixed(2)} / +R$ {(order.shipping_amount || 0).toFixed(2)}
+                      {formatCurrency(-(order.discount_amount || 0))} / {formatSignedCurrency(order.shipping_amount || 0)}
                     </td>
                     <td className="py-3 px-4 text-right font-outfit text-white font-bold">
-                      R$ {order.total_amount.toFixed(2)}
+                      {formatCurrency(order.total_amount)}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center gap-2">
@@ -404,7 +395,7 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
               {filteredOrders.length === 0 && (
                 <tr>
                   <td colSpan={7} className="text-center py-10 text-slate-500 text-xs">
-                    Nenhum pedido importado ainda. Comece enviando seu primeiro XML ou PDF.
+                    Nenhum pedido importado ainda. Comece enviando seu primeiro XML.
                   </td>
                 </tr>
               )}

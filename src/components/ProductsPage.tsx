@@ -16,6 +16,8 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { db } from '../services/db';
 import type { Product } from '../services/db';
+import { detectPackagingUnit, getNormalizedDescription } from '../services/normalizer';
+import { formatCurrency } from '../services/formatters';
 
 
 interface ProductsPageProps {
@@ -41,6 +43,12 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
   const [formUnit, setFormUnit] = useState('');
   const [formInternalUnit, setFormInternalUnit] = useState('');
   const [formUpp, setFormUpp] = useState<number>(1);
+  const [formLastPackagePrice, setFormLastPackagePrice] = useState<number>(0);
+  const [formLastInternalUnitPrice, setFormLastInternalUnitPrice] = useState<number>(0);
+  const [formAveragePackagePrice, setFormAveragePackagePrice] = useState<number>(0);
+  const [formAverageInternalUnitPrice, setFormAverageInternalUnitPrice] = useState<number>(0);
+  const [formMinInternalUnitPrice, setFormMinInternalUnitPrice] = useState<number>(0);
+  const [formMaxInternalUnitPrice, setFormMaxInternalUnitPrice] = useState<number>(0);
   const [formNcm, setFormNcm] = useState('');
   const [formNotes, setFormNotes] = useState('');
 
@@ -65,6 +73,12 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
     setFormUnit('');
     setFormInternalUnit('');
     setFormUpp(1);
+    setFormLastPackagePrice(0);
+    setFormLastInternalUnitPrice(0);
+    setFormAveragePackagePrice(0);
+    setFormAverageInternalUnitPrice(0);
+    setFormMinInternalUnitPrice(0);
+    setFormMaxInternalUnitPrice(0);
     setFormNcm('');
     setFormNotes('');
     setShowModal(true);
@@ -81,6 +95,12 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
     setFormUnit(prod.default_commercial_unit || '');
     setFormInternalUnit(prod.default_internal_unit || '');
     setFormUpp(prod.units_per_package || 1);
+    setFormLastPackagePrice(prod.last_package_price || 0);
+    setFormLastInternalUnitPrice(prod.last_internal_unit_price || 0);
+    setFormAveragePackagePrice(prod.average_package_price || 0);
+    setFormAverageInternalUnitPrice(prod.average_internal_unit_price || 0);
+    setFormMinInternalUnitPrice(prod.min_internal_unit_price || 0);
+    setFormMaxInternalUnitPrice(prod.max_internal_unit_price || 0);
     setFormNcm(prod.ncm || '');
     setFormNotes(prod.notes || '');
     setShowModal(true);
@@ -107,12 +127,17 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) return;
+    if (detectPackagingUnit(formUnit) && formUpp <= 1) {
+      alert('Informe quantas unidades existem dentro desta embalagem.');
+      return;
+    }
 
     const timestamp = new Date().toISOString();
+    const normalizedName = editingProduct ? editingProduct.normalized_name : getNormalizedDescription(formName);
     const productData: Product = {
       id: editingProduct ? editingProduct.id : `prod-${Math.random().toString(36).substring(2, 9)}`,
       name: formName,
-      normalized_name: db.getProductById(editingProduct?.id || '')?.normalized_name || formName.toLowerCase(),
+      normalized_name: normalizedName,
       code: formCode || null,
       barcode: formBarcode || null,
       category: formCategory || 'Não Categorizado',
@@ -120,12 +145,12 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
       default_commercial_unit: formUnit || 'UN',
       default_internal_unit: formInternalUnit || 'UN',
       units_per_package: formUpp > 0 ? formUpp : 1,
-      last_package_price: editingProduct ? editingProduct.last_package_price : 0,
-      last_internal_unit_price: editingProduct ? editingProduct.last_internal_unit_price : 0,
-      average_package_price: editingProduct ? editingProduct.average_package_price : 0,
-      average_internal_unit_price: editingProduct ? editingProduct.average_internal_unit_price : 0,
-      min_internal_unit_price: editingProduct ? editingProduct.min_internal_unit_price : 0,
-      max_internal_unit_price: editingProduct ? editingProduct.max_internal_unit_price : 0,
+      last_package_price: formLastPackagePrice,
+      last_internal_unit_price: formLastInternalUnitPrice,
+      average_package_price: formAveragePackagePrice,
+      average_internal_unit_price: formAverageInternalUnitPrice,
+      min_internal_unit_price: formMinInternalUnitPrice,
+      max_internal_unit_price: formMaxInternalUnitPrice,
       ncm: formNcm || null,
       notes: formNotes || null,
       first_seen_at: editingProduct ? editingProduct.first_seen_at : null,
@@ -291,6 +316,40 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                 <span className="text-slate-500">Unidade de Medida:</span>
                 <span className="font-bold text-brand-400">{prod.default_commercial_unit || 'UN'}</span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Unidade Interna:</span>
+                <span className="font-bold text-emerald-400">{prod.default_internal_unit || 'UN'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Unidades por Embalagem:</span>
+                <span className="font-bold text-amber-300">{prod.units_per_package || 1}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 border-t border-slate-800 pt-3 mt-1">
+                <div className="bg-slate-950/50 border border-slate-900 rounded-lg p-2">
+                  <span className="text-[9px] text-slate-500 uppercase block">Último preço embalagem</span>
+                  <span className="text-[11px] font-bold text-slate-100">{formatCurrency(prod.last_package_price)}</span>
+                </div>
+                <div className="bg-slate-950/50 border border-slate-900 rounded-lg p-2">
+                  <span className="text-[9px] text-slate-500 uppercase block">Último preço interno</span>
+                  <span className="text-[11px] font-bold text-emerald-400">{formatCurrency(prod.last_internal_unit_price)}</span>
+                </div>
+                <div className="bg-slate-950/50 border border-slate-900 rounded-lg p-2">
+                  <span className="text-[9px] text-slate-500 uppercase block">Média embalagem</span>
+                  <span className="text-[11px] font-bold text-slate-100">{formatCurrency(prod.average_package_price)}</span>
+                </div>
+                <div className="bg-slate-950/50 border border-slate-900 rounded-lg p-2">
+                  <span className="text-[9px] text-slate-500 uppercase block">Média interna</span>
+                  <span className="text-[11px] font-bold text-emerald-400">{formatCurrency(prod.average_internal_unit_price)}</span>
+                </div>
+                <div className="bg-slate-950/50 border border-slate-900 rounded-lg p-2">
+                  <span className="text-[9px] text-slate-500 uppercase block">Menor interno</span>
+                  <span className="text-[11px] font-bold text-slate-100">{formatCurrency(prod.min_internal_unit_price)}</span>
+                </div>
+                <div className="bg-slate-950/50 border border-slate-900 rounded-lg p-2">
+                  <span className="text-[9px] text-slate-500 uppercase block">Maior interno</span>
+                  <span className="text-[11px] font-bold text-slate-100">{formatCurrency(prod.max_internal_unit_price)}</span>
+                </div>
+              </div>
               <div className="flex flex-col gap-1 border-t border-slate-800 pt-3 mt-1">
                 <span className="text-slate-500">Anotações Comerciais:</span>
                 <p className="text-[11px] text-slate-400 leading-normal italic">{prod.notes || 'Sem anotações cadastradas.'}</p>
@@ -305,19 +364,19 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="glass-panel rounded-2xl p-4 text-center">
                 <span className="text-[10px] text-slate-500 uppercase font-semibold">Preço Médio</span>
-                <div className="text-sm font-bold font-outfit text-white mt-1">R$ {averagePrice.toFixed(2)}</div>
+                <div className="text-sm font-bold font-outfit text-white mt-1">{formatCurrency(averagePrice)}</div>
               </div>
               <div className="glass-panel rounded-2xl p-4 text-center">
                 <span className="text-[10px] text-slate-500 uppercase font-semibold">Menor Preço</span>
-                <div className="text-sm font-bold font-outfit text-white mt-1">R$ {minPrice.toFixed(2)}</div>
+                <div className="text-sm font-bold font-outfit text-white mt-1">{formatCurrency(minPrice)}</div>
               </div>
               <div className="glass-panel rounded-2xl p-4 text-center">
                 <span className="text-[10px] text-slate-500 uppercase font-semibold">Maior Preço</span>
-                <div className="text-sm font-bold font-outfit text-white mt-1">R$ {maxPrice.toFixed(2)}</div>
+                <div className="text-sm font-bold font-outfit text-white mt-1">{formatCurrency(maxPrice)}</div>
               </div>
               <div className="glass-panel rounded-2xl p-4 text-center">
                 <span className="text-[10px] text-slate-500 uppercase font-semibold">Último Preço</span>
-                <div className="text-sm font-bold font-outfit text-white mt-1">R$ {latestPrice.toFixed(2)}</div>
+                <div className="text-sm font-bold font-outfit text-white mt-1">{formatCurrency(latestPrice)}</div>
               </div>
               {/* Price Change Variance */}
               <div className={`glass-panel rounded-2xl p-4 text-center ${
@@ -348,7 +407,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                       <YAxis stroke="rgba(255,255,255,0.3)" fontSize={10} />
                       <Tooltip 
                         contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '12px', color: '#f8fafc' }}
-                        formatter={(value, _, props) => [`R$ ${parseFloat(value as string).toFixed(2)}`, `Preço (${props.payload.Cliente})`]}
+                        formatter={(value, _, props) => [formatCurrency(parseFloat(value as string)), `Preço (${props.payload.Cliente})`]}
                       />
                       <Line type="monotone" dataKey="Preço" stroke="#06b6d4" strokeWidth={2.5} activeDot={{ r: 6 }} dot={{ strokeWidth: 2 }} />
                     </LineChart>
@@ -383,10 +442,10 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                     {buyers.map((buyer, idx) => (
                       <tr key={idx} className="hover:bg-slate-900/10">
                         <td className="py-2.5 px-3 font-medium text-slate-200">{buyer.name}</td>
-                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{buyer.qty} {prod.default_commercial_unit || 'UN'}</td>
-                        <td className="py-2.5 px-3 text-right text-slate-400">R$ {buyer.minP.toFixed(2)}</td>
-                        <td className="py-2.5 px-3 text-right font-outfit text-white font-bold">R$ {buyer.lastP.toFixed(2)}</td>
-                        <td className="py-2.5 px-3 text-right font-outfit text-emerald-400 font-bold">R$ {buyer.lastPUn.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{buyer.qty} {prod.default_internal_unit || 'UN'}</td>
+                        <td className="py-2.5 px-3 text-right text-slate-400">{formatCurrency(buyer.minP)}</td>
+                        <td className="py-2.5 px-3 text-right font-outfit text-white font-bold">{formatCurrency(buyer.lastP)}</td>
+                        <td className="py-2.5 px-3 text-right font-outfit text-emerald-400 font-bold">{formatCurrency(buyer.lastPUn)}</td>
                         <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{buyer.lastPurchase}</td>
                       </tr>
                     ))}
@@ -472,8 +531,8 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
               <tr className="text-slate-500 border-b border-slate-800 text-[9px] uppercase font-bold bg-slate-900/30">
                 <th className="py-3 px-4 w-1/4">Produto</th>
                 <th className="py-3 px-4 w-1/6">Código / EAN</th>
-                <th className="py-3 px-4 text-center">Un / Cx</th>
-                <th className="py-3 px-4 text-center border-l border-slate-800/50 bg-slate-900/40">XML / Emb</th>
+                <th className="py-3 px-4 text-center">Un/Emb</th>
+                <th className="py-3 px-4 text-center border-l border-slate-800/50 bg-slate-900/40">Un. Comercial</th>
                 <th className="py-3 px-4 text-right bg-slate-900/40">Último R$ (Emb)</th>
                 <th className="py-3 px-4 text-center border-l border-brand-900/20 bg-brand-900/10 text-brand-400">Interna</th>
                 <th className="py-3 px-4 text-right bg-brand-900/10 text-brand-400">Médio R$ (Un)</th>
@@ -503,16 +562,16 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                       {prod.default_commercial_unit || 'UN'}
                     </td>
                     <td className="py-3 px-4 text-right text-slate-400 font-mono bg-slate-900/40">
-                      R$ {(prod.last_package_price || 0).toFixed(2)}
+                      {formatCurrency(prod.last_package_price)}
                     </td>
                     <td className="py-3 px-4 text-center font-bold text-emerald-500 border-l border-brand-900/20 bg-brand-900/5">
                       {prod.default_internal_unit || 'UN'}
                     </td>
                     <td className="py-3 px-4 text-right text-emerald-400/80 font-mono bg-brand-900/5">
-                      R$ {(prod.average_internal_unit_price || 0).toFixed(2)}
+                      {formatCurrency(prod.average_internal_unit_price)}
                     </td>
                     <td className="py-3 px-4 text-right font-outfit text-emerald-400 font-bold bg-brand-900/5">
-                      R$ {(prod.last_internal_unit_price || 0).toFixed(2)}
+                      {formatCurrency(prod.last_internal_unit_price)}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center gap-2">
@@ -542,7 +601,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
               })}
               {filteredProducts.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-slate-500 text-xs">
+                  <td colSpan={9} className="text-center py-10 text-slate-500 text-xs">
                     Nenhum produto cadastrado ainda. Envie uma nota fiscal para catalogar produtos automaticamente.
                   </td>
                 </tr>
@@ -555,7 +614,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
       {/* Create / Edit Modal Popup */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form onSubmit={handleSave} className="glass-panel border border-slate-800 rounded-3xl p-6 w-full max-w-lg space-y-4 shadow-2xl animate-scale-in">
+          <form onSubmit={handleSave} className="glass-panel border border-slate-800 rounded-3xl p-6 w-full max-w-2xl space-y-4 shadow-2xl animate-scale-in">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white font-outfit uppercase tracking-wider">
                 {editingProduct ? 'Editar Cadastro Produto' : 'Cadastrar Novo Produto'}
@@ -629,7 +688,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                     type="text"
                     value={formUnit}
                     onChange={(e) => setFormUnit(e.target.value.toUpperCase())}
-                    maxLength={3}
+                    maxLength={7}
                     placeholder="Ex: CX, FD, UN"
                     className="w-full bg-slate-900 border border-slate-800 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
                   />
@@ -640,7 +699,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                     type="text"
                     value={formInternalUnit}
                     onChange={(e) => setFormInternalUnit(e.target.value.toUpperCase())}
-                    maxLength={3}
+                    maxLength={7}
                     placeholder="Ex: UN, KG"
                     className="w-full bg-slate-900 border border-brand-500/50 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
                   />
@@ -657,6 +716,11 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                     min={1}
                     className="w-full bg-slate-900 border border-brand-500/50 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
                   />
+                  {detectPackagingUnit(formUnit) && formUpp <= 1 && (
+                    <p className="text-[10px] text-amber-300 font-semibold mt-1">
+                      Informe quantas unidades existem dentro desta embalagem.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="text-[10px] text-slate-500 uppercase font-semibold">NCM</label>
@@ -665,6 +729,69 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                     value={formNcm}
                     onChange={(e) => setFormNcm(e.target.value)}
                     placeholder="0000.00.00"
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 border-t border-slate-800 pt-3">
+                <div>
+                  <label className="text-[10px] text-slate-500 uppercase font-semibold">Último preço embalagem</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formLastPackagePrice}
+                    onChange={(e) => setFormLastPackagePrice(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-brand-400 uppercase font-semibold">Último preço unidade interna</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formLastInternalUnitPrice}
+                    onChange={(e) => setFormLastInternalUnitPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-900 border border-brand-500/50 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 uppercase font-semibold">Média preço embalagem</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formAveragePackagePrice}
+                    onChange={(e) => setFormAveragePackagePrice(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-brand-400 uppercase font-semibold">Média preço unidade interna</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formAverageInternalUnitPrice}
+                    onChange={(e) => setFormAverageInternalUnitPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-900 border border-brand-500/50 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 uppercase font-semibold">Menor preço interno</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formMinInternalUnitPrice}
+                    onChange={(e) => setFormMinInternalUnitPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-900 border border-slate-800 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 uppercase font-semibold">Maior preço interno</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formMaxInternalUnitPrice}
+                    onChange={(e) => setFormMaxInternalUnitPrice(parseFloat(e.target.value) || 0)}
                     className="w-full bg-slate-900 border border-slate-800 focus:border-brand-500 rounded-lg py-1.5 px-3 text-xs text-white focus:outline-none transition-colors mt-1"
                   />
                 </div>

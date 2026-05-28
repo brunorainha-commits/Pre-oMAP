@@ -19,6 +19,7 @@ import type {
   NormalizedInvoice,
   UserRole
 } from '../repositories/types';
+import { detectPackagingUnit } from './normalizer';
 
 export type {
   Customer,
@@ -40,6 +41,55 @@ export function getNormalizedDescription(desc: string): string {
     .replace(/[^a-z0-9]/g, ' ') // replace symbols with spaces
     .replace(/\s+/g, ' ') // remove extra spaces
     .trim();
+}
+
+function roundAmount(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function average(values: number[]): number | null {
+  const validValues = values.filter(value => Number.isFinite(value));
+  if (validValues.length === 0) return null;
+  return roundAmount(validValues.reduce((sum, value) => sum + value, 0) / validValues.length);
+}
+
+function getProductStatsWithItem(productId: string, item: NormalizedInvoice['items'][number]) {
+  const histories = priceHistoryRepository.getByProductId(productId);
+  const packagePrices = [...histories.map(ph => ph.commercial_unit_price), item.commercial_unit_price];
+  const internalPrices = [...histories.map(ph => ph.internal_unit_price), item.internal_unit_price];
+  const validInternalPrices = internalPrices.filter(value => Number.isFinite(value));
+
+  return {
+    average_package_price: average(packagePrices),
+    average_internal_unit_price: average(internalPrices),
+    min_internal_unit_price: validInternalPrices.length > 0 ? roundAmount(Math.min(...validInternalPrices)) : null,
+    max_internal_unit_price: validInternalPrices.length > 0 ? roundAmount(Math.max(...validInternalPrices)) : null
+  };
+}
+
+function validateInvoiceBeforeImport(invoice: NormalizedInvoice): void {
+  if (!invoice.customer_name.trim()) {
+    throw new Error('Cliente obrigatório.');
+  }
+  if (invoice.items.length === 0) {
+    throw new Error('O pedido deve conter pelo menos um item.');
+  }
+
+  invoice.items.forEach((item, index) => {
+    const label = item.description || `Item ${index + 1}`;
+    if (item.commercial_quantity <= 0) {
+      throw new Error(`Quantidade comercial inválida em "${label}".`);
+    }
+    if (item.commercial_unit_price <= 0) {
+      throw new Error(`Preço comercial inválido em "${label}".`);
+    }
+    if (item.commercial_total_price <= 0) {
+      throw new Error(`Total comercial inválido em "${label}".`);
+    }
+    if (detectPackagingUnit(item.commercial_unit) && item.units_per_package <= 1) {
+      throw new Error(`Informe quantas unidades existem dentro da embalagem de "${label}".`);
+    }
+  });
 }
 
 export const db = {
@@ -134,6 +184,7 @@ export const db = {
   // Big Import Function
   importInvoice(invoice: NormalizedInvoice): Order {
     const now = new Date().toISOString();
+    validateInvoiceBeforeImport(invoice);
 
     // 1. Process Customer
     let customer = customerRepository.findByDocument(invoice.customer_document || '');
@@ -187,13 +238,17 @@ export const db = {
     invoice.items.forEach(item => {
       // Find or create product
       const itemNormName = item.normalized_description;
-      let product = productRepository.findByBarcode(item.barcode || '');
+      let product = item.product_id ? productRepository.getById(item.product_id) : undefined;
+      if (!product) {
+        product = productRepository.findByBarcode(item.barcode || '');
+      }
       if (!product && item.product_code) {
         product = productRepository.findByCode(item.product_code);
       }
       if (!product) {
         product = productRepository.findByNormalizedName(itemNormName);
       }
+      const itemUnitsPerPackage = item.units_per_package > 0 ? item.units_per_package : 1;
       if (!product) {
         product = {
           id: `prod-${Math.random().toString(36).substring(2, 9)}`,
@@ -206,7 +261,7 @@ export const db = {
           ncm: item.ncm,
           default_commercial_unit: item.commercial_unit,
           default_internal_unit: item.internal_unit,
-          units_per_package: item.units_per_package,
+          units_per_package: itemUnitsPerPackage,
           last_package_price: item.commercial_unit_price,
           last_internal_unit_price: item.internal_unit_price,
           average_package_price: item.commercial_unit_price,
@@ -220,15 +275,36 @@ export const db = {
           updated_at: now
         };
       } else {
-        // Update product statistics
+        const productUnits = product.units_per_package || 0;
+        const shouldFillMissingConversion = itemUnitsPerPackage > 1 && productUnits <= 1;
+        const shouldOverwriteConversion = itemUnitsPerPackage > 1 && productUnits > 1 && productUnits !== itemUnitsPerPackage && item.save_conversion_to_product;
+        const shouldPersistConversion = shouldFillMissingConversion || shouldOverwriteConversion;
+        const stats = getProductStatsWithItem(product.id, item);
+
+        if (shouldPersistConversion) {
+          product.units_per_package = itemUnitsPerPackage;
+          product.default_internal_unit = item.internal_unit;
+          product.default_commercial_unit = item.commercial_unit;
+        } else if (!product.units_per_package) {
+          product.units_per_package = itemUnitsPerPackage;
+        }
+
+        if (!product.default_commercial_unit) {
+          product.default_commercial_unit = item.commercial_unit;
+        }
+        if (!product.default_internal_unit) {
+          product.default_internal_unit = item.internal_unit;
+        }
+        if (!product.ncm && item.ncm) {
+          product.ncm = item.ncm;
+        }
+
         product.last_package_price = item.commercial_unit_price;
         product.last_internal_unit_price = item.internal_unit_price;
-        if (!product.min_internal_unit_price || item.internal_unit_price < product.min_internal_unit_price) {
-          product.min_internal_unit_price = item.internal_unit_price;
-        }
-        if (!product.max_internal_unit_price || item.internal_unit_price > product.max_internal_unit_price) {
-          product.max_internal_unit_price = item.internal_unit_price;
-        }
+        product.average_package_price = stats.average_package_price;
+        product.average_internal_unit_price = stats.average_internal_unit_price;
+        product.min_internal_unit_price = stats.min_internal_unit_price;
+        product.max_internal_unit_price = stats.max_internal_unit_price;
         product.last_seen_at = now;
         product.updated_at = now;
       }
@@ -361,5 +437,3 @@ export const db = {
     uploadRepository.clear();
   }
 };
-
-

@@ -3,6 +3,7 @@ import { Search, Bell, Calendar, User, FileText, Package, Users, X } from 'lucid
 import { db } from '../services/db';
 import type { Customer, Product, Order } from '../services/db';
 import type { CommercialAlert } from '../services/alerts';
+import { formatCurrency } from '../services/formatters';
 
 interface TopbarProps {
   setCurrentTab: (tab: string) => void;
@@ -202,7 +203,7 @@ export function Topbar({
                       className="w-full text-left px-3 py-2 hover:bg-slate-800/80 rounded-lg text-xs transition-colors flex justify-between items-center"
                     >
                       <span className="font-medium text-slate-200 truncate pr-2">Nota: {o.invoice_number || 'S/N'} ({o.order_number})</span>
-                      <span className="text-[10px] text-slate-500 shrink-0">R$ {o.total_amount.toFixed(2)}</span>
+                      <span className="text-[10px] text-slate-500 shrink-0">{formatCurrency(o.total_amount)}</span>
                     </button>
                   ))}
                 </div>
