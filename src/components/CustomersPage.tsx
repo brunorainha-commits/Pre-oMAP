@@ -18,6 +18,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { db } from '../services/db';
 import type { Customer } from '../services/db';
 import { formatCurrency } from '../services/formatters';
+import { matchesSearch, normalizeSearchValue } from '../services/search';
 
 
 interface CustomersPageProps {
@@ -127,17 +128,24 @@ export function CustomersPage({ userRole, selectedCustomerId, setSelectedCustome
 
   // Filtered List
   const filteredCustomers = customers.filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) || 
-      (c.document && c.document.replace(/\D/g, '').includes(search.replace(/\D/g, '')));
-    
-    const matchesCity = !filterCity || (c.city && c.city.toLowerCase().includes(filterCity.toLowerCase()));
-    const matchesState = !filterState || (c.state && c.state.toUpperCase() === filterState.toUpperCase());
+    const matchesText = matchesSearch(search, [
+      c.name,
+      c.document,
+      c.email,
+      c.phone,
+      c.city,
+      c.state,
+      c.notes
+    ]);
+
+    const matchesCity = matchesSearch(filterCity, [c.city]);
+    const matchesState = !filterState || normalizeSearchValue(c.state) === normalizeSearchValue(filterState);
     
     let matchesVolume = true;
     if (filterVolume === 'high') matchesVolume = c.total_amount >= 10000;
     if (filterVolume === 'low') matchesVolume = c.total_amount < 10000;
 
-    return matchesSearch && matchesCity && matchesState && matchesVolume;
+    return matchesText && matchesCity && matchesState && matchesVolume;
   });
 
   // Render detail view if a customer is selected
@@ -426,7 +434,7 @@ export function CustomersPage({ userRole, selectedCustomerId, setSelectedCustome
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nome ou CPF/CNPJ..."
+            placeholder="Buscar por nome, CPF/CNPJ, cidade, e-mail..."
             className="w-full bg-slate-900/50 border border-slate-800 focus:border-brand-500 rounded-xl py-1.5 pl-10 pr-4 text-xs text-slate-200 focus:outline-none transition-colors"
           />
           <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />

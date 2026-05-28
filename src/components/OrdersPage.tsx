@@ -12,6 +12,7 @@ import {
 import { db } from '../services/db';
 import type { Order } from '../services/db';
 import { formatCurrency, formatSignedCurrency } from '../services/formatters';
+import { matchesSearch } from '../services/search';
 
 
 interface OrdersPageProps {
@@ -57,20 +58,43 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
   // Filter orders
   const filteredOrders = orders.filter(o => {
     const cust = db.getCustomerById(o.customer_id);
-    const custName = cust ? cust.name.toLowerCase() : '';
-    const custDoc = cust ? (cust.document || '').replace(/\D/g, '') : '';
+    const items = db.getOrderItemsByOrder(o.id);
+    const itemSearchValues = items.flatMap(item => {
+      const product = item.product_id ? db.getProductById(item.product_id) : undefined;
+      return [
+        item.description,
+        item.product_code,
+        item.barcode,
+        item.ncm,
+        item.cfop,
+        item.commercial_unit,
+        item.internal_unit,
+        product?.name,
+        product?.code,
+        product?.barcode,
+        product?.ncm
+      ];
+    });
     
-    const matchesSearch = 
-      custName.includes(search.toLowerCase()) ||
-      custDoc.includes(search.replace(/\D/g, '')) ||
-      (o.invoice_number && o.invoice_number.includes(search)) ||
-      (o.order_number && o.order_number.toLowerCase().includes(search.toLowerCase())) ||
-      (o.invoice_key && o.invoice_key.includes(search));
+    const matchesOrderSearch = matchesSearch(search, [
+      cust?.name,
+      cust?.document,
+      cust?.city,
+      cust?.state,
+      o.invoice_number,
+      o.invoice_series,
+      o.order_number,
+      o.invoice_key,
+      o.source_file_name,
+      o.issue_date,
+      o.total_amount,
+      ...itemSearchValues
+    ]);
 
     const matchesType = filterType === 'all' || o.source_file_type === filterType;
     const matchesCustomer = filterCustomer === 'all' || o.customer_id === filterCustomer;
 
-    return matchesSearch && matchesType && matchesCustomer;
+    return matchesOrderSearch && matchesType && matchesCustomer;
   });
 
   // Render detail view if selected
@@ -299,7 +323,7 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por cliente, produto, nº nota ou chave..."
+            placeholder="Buscar por cliente, produto, código, nota ou chave..."
             className="w-full bg-slate-900/50 border border-slate-800 focus:border-brand-500 rounded-xl py-1.5 pl-10 pr-4 text-xs text-slate-200 focus:outline-none transition-colors"
           />
           <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />

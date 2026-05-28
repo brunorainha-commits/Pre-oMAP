@@ -4,16 +4,20 @@ import {
   Users, 
   Percent, 
   Activity, 
-  AlertTriangle 
+  AlertTriangle,
+  Search
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { db } from '../services/db';
 import type { Product, Customer } from '../services/db';
 import { formatCurrency, formatSignedCurrency } from '../services/formatters';
+import { matchesSearch } from '../services/search';
 
 export function PriceHistoryPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [productSearch, setProductSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
   
   // Selection states
   const [selectedProductId, setSelectedProductId] = useState<string>('');
@@ -32,6 +36,31 @@ export function PriceHistoryPage() {
   }, []);
 
   const activeProduct = products.find(p => p.id === selectedProductId);
+  const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+  const filteredProductOptions = products.filter(product => matchesSearch(productSearch, [
+    product.name,
+    product.code,
+    product.barcode,
+    product.ncm,
+    product.brand,
+    product.category,
+    product.default_commercial_unit,
+    product.default_internal_unit
+  ]));
+  const productOptions = activeProduct && !filteredProductOptions.some(product => product.id === activeProduct.id)
+    ? [activeProduct, ...filteredProductOptions]
+    : filteredProductOptions;
+  const filteredCustomerOptions = customers.filter(customer => matchesSearch(customerSearch, [
+    customer.name,
+    customer.document,
+    customer.city,
+    customer.state,
+    customer.email,
+    customer.phone
+  ]));
+  const customerOptions = selectedCustomer && !filteredCustomerOptions.some(customer => customer.id === selectedCustomer.id)
+    ? [selectedCustomer, ...filteredCustomerOptions]
+    : filteredCustomerOptions;
 
   // Get price histories
   const priceHistories = db.getPriceHistory();
@@ -152,16 +181,29 @@ export function PriceHistoryPage() {
           <label className="text-[10px] text-slate-500 uppercase font-semibold flex items-center gap-1">
             <Tag className="w-3.5 h-3.5 text-brand-500" /> Selecione o Produto
           </label>
+          <div className="relative">
+            <input
+              type="text"
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              placeholder="Buscar produto, código, NCM..."
+              className="w-full bg-slate-950/60 border border-slate-800 focus:border-brand-500 rounded-xl py-2 pl-9 pr-3 text-xs text-white focus:outline-none transition-colors"
+            />
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          </div>
           <select
             value={selectedProductId}
             onChange={(e) => setSelectedProductId(e.target.value)}
             className="w-full bg-slate-900 border border-slate-800 focus:border-brand-500 rounded-xl py-2 px-3 text-xs text-white focus:outline-none transition-colors"
           >
             <option value="" disabled>Selecione um produto...</option>
-            {products.map(p => (
+            {productOptions.map(p => (
               <option key={p.id} value={p.id}>{p.name} ({p.code || 'S/C'})</option>
             ))}
           </select>
+          {productSearch && filteredProductOptions.length === 0 && (
+            <div className="text-[10px] text-amber-300">Nenhum produto encontrado para essa busca.</div>
+          )}
         </div>
 
         {/* Customer selection */}
@@ -169,16 +211,29 @@ export function PriceHistoryPage() {
           <label className="text-[10px] text-slate-500 uppercase font-semibold flex items-center gap-1">
             <Users className="w-3.5 h-3.5 text-accent-cyan" /> Filtrar por Cliente (Gráfico)
           </label>
+          <div className="relative">
+            <input
+              type="text"
+              value={customerSearch}
+              onChange={(e) => setCustomerSearch(e.target.value)}
+              placeholder="Buscar cliente ou CNPJ..."
+              className="w-full bg-slate-950/60 border border-slate-800 focus:border-brand-500 rounded-xl py-2 pl-9 pr-3 text-xs text-white focus:outline-none transition-colors"
+            />
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+          </div>
           <select
             value={selectedCustomerId}
             onChange={(e) => setSelectedCustomerId(e.target.value)}
             className="w-full bg-slate-900 border border-slate-800 focus:border-brand-500 rounded-xl py-2 px-3 text-xs text-white focus:outline-none transition-colors"
           >
             <option value="all">Todos os clientes</option>
-            {customers.map(c => (
+            {customerOptions.map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+          {customerSearch && filteredCustomerOptions.length === 0 && (
+            <div className="text-[10px] text-amber-300">Nenhum cliente encontrado para essa busca.</div>
+          )}
         </div>
 
         {/* Variance filter */}

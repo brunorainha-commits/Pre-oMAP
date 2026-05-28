@@ -309,6 +309,14 @@ Data must persist into:
 
 ## Pages And UI Responsibilities
 
+Local search:
+
+- Shared helper: `src/services/search.ts`.
+- Searches should be accent-insensitive, punctuation-insensitive, and match CNPJ/CPF with or without mask.
+- CustomersPage local search should match name, document, city, state, e-mail, phone, and notes.
+- OrdersPage local search should match customer fields, invoice/order identifiers, source file name, issue date, and order item/product fields such as product description, code, barcode, NCM, CFOP, commercial unit, and internal unit.
+- PriceHistoryPage has searchable product and customer filters before the selects.
+
 ProductsPage:
 
 - Product modal includes default commercial unit, internal unit, and units per package.
@@ -529,4 +537,3 @@ To import many XMLs:
 3. Select multiple XML files.
 4. Use auto-save only when conversions are already known.
 5. Review new package conversions once and save them to product registration.
-
