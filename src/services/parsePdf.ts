@@ -212,16 +212,104 @@ export async function parsePdfInvoice(pdfBuffer: ArrayBuffer, fileName: string):
     if (matched) break;
   }
 
-  // If customer name still not found, try using the line before or after customer document
-  if (customerName === 'Revisar Cliente PDF' && customerDocument) {
+  // Robust document-based overriding for Customer Name (fixes labels parsed as names)
+  const isBadCustomerName = 
+    customerName === 'Revisar Cliente PDF' || 
+    customerName.includes('Razão Social') || 
+    customerName.includes('CNPJ') || 
+    customerName.includes('CPF') ||
+    customerName.includes('Destinatário') || 
+    customerName.includes('Inscrição') || 
+    customerName.length > 50;
+
+  if (isBadCustomerName && customerDocument) {
+    let overriden = false;
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(customerDocument)) {
-        // Try looking above or below
-        const above = lines[i - 1];
-        if (above && above.trim().length > 4 && !above.includes('CNPJ') && !above.includes('NFE')) {
-          customerName = above.trim();
+      const line = lines[i];
+      if (line.includes(customerDocument)) {
+        const parts = line.split(customerDocument);
+        let nameCandidate = parts[0].trim();
+        nameCandidate = nameCandidate
+          .replace(/^(?:nome|razao\s+social|cliente|destinatario|razao|comprador)\s*\/?:?\s*/i, '')
+          .replace(/^(?:nome\s*\/\s*razao\s*social)\s*\/?:?\s*/i, '')
+          .trim();
+        nameCandidate = nameCandidate.replace(/[\s\-\/]+$/, '').trim();
+
+        if (nameCandidate.length > 3 && !/cnpj|cpf|inscricao|emissao/i.test(nameCandidate)) {
+          customerName = nameCandidate;
+          confidenceScore += 0.15;
+          overriden = true;
+          break;
         }
-        break;
+      }
+    }
+
+    // Fallback look above document line
+    if (!overriden) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(customerDocument) && i > 0) {
+          const above = lines[i - 1];
+          if (above && above.trim().length > 3) {
+            let nameCandidate = above.trim()
+              .replace(/^(?:nome|razao\s+social|cliente|destinatario|razao|comprador)\s*\/?:?\s*/i, '')
+              .replace(/^(?:nome\s*\/\s*razao\s*social)\s*\/?:?\s*/i, '')
+              .trim();
+            nameCandidate = nameCandidate.replace(/[\s\-\/]+$/, '').trim();
+
+            if (nameCandidate.length > 3 && !/cnpj|cpf|inscricao|emissao|destinatario/i.test(nameCandidate)) {
+              customerName = nameCandidate;
+              confidenceScore += 0.1;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Robust document-based overriding for Issuer Name
+  const isBadCompanyName = 
+    !companyName || 
+    companyName.includes('Emitente') || 
+    companyName.includes('Razão Social') || 
+    companyName.length > 50;
+
+  if (isBadCompanyName && companyDocument) {
+    let overriden = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line.includes(companyDocument)) {
+        const parts = line.split(companyDocument);
+        let nameCandidate = parts[0].trim();
+        nameCandidate = nameCandidate
+          .replace(/^(?:nome|razao\s+social|emitente|vendedor|prestador)\s*\/?:?\s*/i, '')
+          .trim();
+        nameCandidate = nameCandidate.replace(/[\s\-\/]+$/, '').trim();
+
+        if (nameCandidate.length > 3 && !/cnpj|cpf|inscricao|emissao/i.test(nameCandidate)) {
+          companyName = nameCandidate;
+          overriden = true;
+          break;
+        }
+      }
+    }
+
+    if (!overriden) {
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(companyDocument) && i > 0) {
+          const above = lines[i - 1];
+          if (above && above.trim().length > 3) {
+            let nameCandidate = above.trim()
+              .replace(/^(?:nome|razao\s+social|emitente|vendedor|prestador)\s*\/?:?\s*/i, '')
+              .trim();
+            nameCandidate = nameCandidate.replace(/[\s\-\/]+$/, '').trim();
+
+            if (nameCandidate.length > 3 && !/cnpj|cpf|inscricao|emissao/i.test(nameCandidate)) {
+              companyName = nameCandidate;
+              break;
+            }
+          }
+        }
       }
     }
   }
