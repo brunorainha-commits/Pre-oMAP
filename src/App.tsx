@@ -21,6 +21,7 @@ import type { CommercialAlert } from './services/alerts';
 function App() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [userRole, setUserRole] = useState<UserRole>('admin');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
   // Selection states (for drill down navigation)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -34,6 +35,11 @@ function App() {
   // Alerts feed state
   const [alerts, setAlerts] = useState<CommercialAlert[]>([]);
   const actionableAlertsCount = getActionableAlerts(alerts).length;
+
+  const getInvoiceReviewKey = (invoice: NormalizedInvoice) => {
+    return invoice.invoice_key ||
+      `${invoice.source_file_name}|${invoice.invoice_number || ''}|${invoice.customer_document || ''}|${invoice.total_amount}|${invoice.items.length}`;
+  };
 
   // Load configuration on mount
   useEffect(() => {
@@ -58,13 +64,22 @@ function App() {
   const startSingleReview = (invoice: NormalizedInvoice) => {
     setReviewQueue([]);
     setActiveReviewInvoice(invoice);
+    setIsMobileMenuOpen(false);
   };
 
   const startBatchReview = (invoices: NormalizedInvoice[]) => {
-    const readyInvoices = invoices.filter(Boolean);
+    const seen = new Set<string>();
+    const readyInvoices = invoices.filter(invoice => {
+      if (!invoice) return false;
+      const key = getInvoiceReviewKey(invoice);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     if (readyInvoices.length === 0) return;
     setReviewQueue(readyInvoices.slice(1));
     setActiveReviewInvoice(readyInvoices[0]);
+    setIsMobileMenuOpen(false);
   };
 
   const handleRoleChange = (role: UserRole) => {
@@ -213,11 +228,20 @@ function App() {
           setUserRole={handleRoleChange}
           alertsCount={actionableAlertsCount}
           onWipeDB={handleWipeDatabase}
+          isMobileOpen={isMobileMenuOpen}
+          onClose={() => setIsMobileMenuOpen(false)}
         />
+        {isMobileMenuOpen && (
+          <button
+            className="fixed inset-0 z-20 bg-slate-950/70 backdrop-blur-sm md:hidden"
+            onClick={() => setIsMobileMenuOpen(false)}
+            aria-label="Fechar menu"
+          />
+        )}
       </div>
 
       {/* Main Panel Area */}
-      <div className="flex-1 flex flex-col pl-64 min-w-0 print:pl-0">
+      <div className="flex-1 flex flex-col md:pl-64 min-w-0 print:pl-0">
         
         {/* Topbar navigation & global search */}
         <div className="print:hidden">
@@ -228,13 +252,15 @@ function App() {
             onSelectOrder={setSelectedOrderId}
             alerts={alerts}
             onDismissAlert={handleDismissAlert}
+            onToggleMobileMenu={() => setIsMobileMenuOpen(true)}
           />
         </div>
 
         {/* Content Wrapper */}
-        <main className="flex-grow pt-24 px-8 pb-12 print:pt-4 print:px-4">
+        <main className="flex-grow pt-32 lg:pt-24 px-3 sm:px-4 md:px-8 pb-12 print:pt-4 print:px-4 min-w-0">
           {activeReviewInvoice ? (
             <ReviewPage 
+              key={getInvoiceReviewKey(activeReviewInvoice)}
               invoice={activeReviewInvoice}
               onSave={handleSaveReviewedInvoice}
               onCancel={handleCancelReview}

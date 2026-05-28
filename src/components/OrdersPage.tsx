@@ -95,8 +95,8 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
     return (
       <div className="space-y-6 animate-fade-in pb-12 max-w-5xl mx-auto">
         {/* Detail Header */}
-        <div className="flex items-center justify-between border-b border-slate-800/60 pb-4">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/60 pb-4">
+          <div className="flex items-center gap-3 min-w-0">
             <button 
               onClick={() => setSelectedOrderId(null)}
               className="p-2 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-colors"
@@ -104,12 +104,12 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
               <ArrowLeft className="w-4 h-4" />
             </button>
             <div>
-              <h2 className="text-xl font-bold font-outfit text-white tracking-wide">Faturamento: {order.order_number}</h2>
-              <span className="text-xs text-slate-500 font-mono">ID Registro: {order.id} • Processado em {new Date(order.created_at).toLocaleDateString('pt-BR')}</span>
+              <h2 className="text-lg sm:text-xl font-bold font-outfit text-white tracking-wide break-words">Faturamento: {order.order_number}</h2>
+              <span className="text-xs text-slate-500 font-mono break-all">ID Registro: {order.id} • Processado em {new Date(order.created_at).toLocaleDateString('pt-BR')}</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-end sm:self-auto">
             {isAdmin && (
               <button
                 onClick={(e) => handleDelete(order.id, e)}
@@ -122,10 +122,10 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
           
           {/* Left Column: Metadata cards */}
-          <div className="space-y-6 lg:col-span-1">
+          <div className="space-y-5 xl:col-span-1">
             
             {/* Customer Spec */}
             <div className="glass-panel rounded-2xl p-5 space-y-4">
@@ -212,7 +212,7 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
           </div>
 
           {/* Right Column: Items and Raw toggle */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="xl:col-span-2 space-y-5 min-w-0">
             
             {/* Items details table */}
             <div className="glass-panel rounded-2xl p-5 space-y-4">
@@ -327,7 +327,52 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
       </div>
 
       {/* Orders List Grid Table */}
-      <div className="glass-panel rounded-2xl overflow-hidden">
+      <div className="md:hidden space-y-3">
+        {filteredOrders.map((order) => {
+          const cust = db.getCustomerById(order.customer_id);
+          const isXml = order.source_file_type === 'xml';
+          return (
+            <button
+              key={order.id}
+              onClick={() => setSelectedOrderId(order.id)}
+              className="w-full text-left glass-panel rounded-2xl p-4 border border-slate-800/70 space-y-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-white font-outfit break-words">{order.order_number}</div>
+                  <div className="text-[11px] text-slate-500 font-mono">Nota: {order.invoice_number || 'S/N'}</div>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-[8px] font-bold shrink-0 ${
+                  isXml ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                }`}>
+                  {order.source_file_type.toUpperCase()}
+                </span>
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-200 break-words">{cust?.name || 'Cliente Desconhecido'}</div>
+                <div className="text-[11px] text-slate-500 font-mono break-all">{cust?.document || 'S/D'}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-slate-500">Emissão</div>
+                  <div className="text-slate-300 font-mono">{order.issue_date || 'S/D'}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] uppercase font-bold text-slate-500">Total</div>
+                  <div className="text-white font-bold">{formatCurrency(order.total_amount)}</div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+        {filteredOrders.length === 0 && (
+          <div className="glass-panel rounded-2xl p-8 text-center text-slate-500 text-xs">
+            Nenhum pedido importado ainda. Comece enviando seu primeiro XML.
+          </div>
+        )}
+      </div>
+
+      <div className="hidden md:block glass-panel rounded-2xl overflow-hidden">
         <div className="overflow-x-auto no-scrollbar">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
@@ -356,7 +401,7 @@ export function OrdersPage({ userRole, selectedOrderId, setSelectedOrderId }: Or
                       <div className="text-[9px] text-slate-500 mt-0.5">Nota: {order.invoice_number || 'S/N'}</div>
                     </td>
                     <td className="py-3 px-4">
-                      <div className="font-medium text-slate-300 truncate max-w-[200px]">{cust?.name || 'Cliente Desconhecido'}</div>
+                      <div className="font-medium text-slate-300 truncate max-w-[260px]" title={cust?.name || 'Cliente Desconhecido'}>{cust?.name || 'Cliente Desconhecido'}</div>
                       <div className="text-[9px] text-slate-500 font-mono mt-0.5">{cust?.document || 'S/D'}</div>
                     </td>
                     <td className="py-3 px-4 text-center">

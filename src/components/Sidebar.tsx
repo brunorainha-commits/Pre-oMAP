@@ -22,6 +22,8 @@ interface SidebarProps {
   setUserRole: (role: UserRole) => void;
   alertsCount: number;
   onWipeDB: () => void;
+  isMobileOpen?: boolean;
+  onClose?: () => void;
 }
 
 export function Sidebar({ 
@@ -30,7 +32,9 @@ export function Sidebar({
   userRole, 
   setUserRole,
   alertsCount,
-  onWipeDB
+  onWipeDB,
+  isMobileOpen = false,
+  onClose
 }: SidebarProps) {
 
   const navItems = [
@@ -57,8 +61,15 @@ export function Sidebar({
     }
   };
 
+  const handleTabClick = (tab: string) => {
+    setCurrentTab(tab);
+    onClose?.();
+  };
+
   return (
-    <aside className="w-64 glass-panel border-r border-slate-800 flex flex-col h-screen fixed left-0 top-0 z-20 text-slate-300">
+    <aside className={`w-64 glass-panel border-r border-slate-800 flex flex-col h-screen fixed left-0 top-0 z-30 text-slate-300 transition-transform duration-300 md:translate-x-0 ${
+      isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+    }`}>
       {/* Brand Logo */}
       <div className="p-6 border-b border-slate-800/60 flex items-center gap-3">
         <div className="bg-gradient-to-tr from-brand-600 to-accent-cyan p-2.5 rounded-xl shadow-lg shadow-brand-500/20">
@@ -77,7 +88,7 @@ export function Sidebar({
           return (
             <button
               key={item.id}
-              onClick={() => setCurrentTab(item.id)}
+              onClick={() => handleTabClick(item.id)}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 group text-sm font-medium ${
                 isActive 
                   ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/15 font-semibold' 
