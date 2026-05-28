@@ -348,8 +348,8 @@ export function ReportsPage() {
         </div>
 
         {/* Table Content */}
-        <div className="overflow-x-auto no-scrollbar">
-          <table className="w-full text-left text-xs border-collapse">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-xs border-collapse">
             <thead>
               <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold bg-slate-900/30 print:bg-slate-100 print:text-slate-700 print:border-slate-300">
                 <th className="py-2.5 px-4">{reportData.headers[0]}</th>

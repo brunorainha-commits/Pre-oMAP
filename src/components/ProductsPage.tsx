@@ -17,7 +17,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { db } from '../services/db';
 import type { Product } from '../services/db';
 import { detectPackagingUnit, getNormalizedDescription } from '../services/normalizer';
-import { formatCurrency } from '../services/formatters';
+import { formatCurrency, formatQuantity } from '../services/formatters';
+import { matchesSearch } from '../services/search';
 
 
 interface ProductsPageProps {
@@ -170,14 +171,24 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
 
   // Filter products
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
-      (p.code && p.code.toLowerCase().includes(search.toLowerCase())) ||
-      (p.barcode && p.barcode.includes(search));
+    const matchesText = matchesSearch(search, [
+      p.name,
+      p.code,
+      p.barcode,
+      p.ncm,
+      p.brand,
+      p.category,
+      p.default_commercial_unit,
+      p.default_internal_unit,
+      p.units_per_package,
+      p.last_package_price,
+      p.last_internal_unit_price
+    ]);
 
     const matchesCategory = filterCategory === 'all' || p.category === filterCategory;
     const matchesBrand = filterBrand === 'all' || p.brand === filterBrand;
 
-    return matchesSearch && matchesCategory && matchesBrand;
+    return matchesText && matchesCategory && matchesBrand;
   });
 
   // Render detail view if a product is selected
@@ -194,12 +205,13 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
       );
     }
 
-    const priceHistory = db.getPriceHistoryByProduct(prod.id);
+    const priceHistory = [...db.getPriceHistoryByProduct(prod.id)]
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     // Calculate stats
     const totalQty = priceHistory.reduce((sum, ph) => sum + ph.internal_quantity, 0);
     const totalAmount = priceHistory.reduce((sum, ph) => sum + ph.commercial_total_price, 0);
-    const averagePrice = priceHistory.length > 0 ? totalAmount / totalQty : 0;
+    const averagePrice = totalQty > 0 ? totalAmount / totalQty : 0;
     
     const prices = priceHistory.map(ph => ph.internal_unit_price);
     const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
@@ -426,8 +438,8 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                 <Tag className="w-4 h-4 text-accent-cyan" />
                 Histórico de Preços por Cliente
               </h4>
-              <div className="max-h-60 overflow-y-auto no-scrollbar border border-slate-800/40 rounded-xl">
-                <table className="w-full text-left text-xs border-collapse">
+              <div className="max-h-60 overflow-auto border border-slate-800/40 rounded-xl">
+                <table className="w-full min-w-[720px] text-left text-xs border-collapse">
                   <thead>
                     <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold bg-slate-900/30">
                       <th className="py-2.5 px-3">Cliente</th>
@@ -442,7 +454,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                     {buyers.map((buyer, idx) => (
                       <tr key={idx} className="hover:bg-slate-900/10">
                         <td className="py-2.5 px-3 font-medium text-slate-200">{buyer.name}</td>
-                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{buyer.qty} {prod.default_internal_unit || 'UN'}</td>
+                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{formatQuantity(buyer.qty)} {prod.default_internal_unit || 'UN'}</td>
                         <td className="py-2.5 px-3 text-right text-slate-400">{formatCurrency(buyer.minP)}</td>
                         <td className="py-2.5 px-3 text-right font-outfit text-white font-bold">{formatCurrency(buyer.lastP)}</td>
                         <td className="py-2.5 px-3 text-right font-outfit text-emerald-400 font-bold">{formatCurrency(buyer.lastPUn)}</td>
@@ -451,7 +463,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                     ))}
                     {buyers.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="text-center py-6 text-xs text-slate-500">
+                        <td colSpan={6} className="text-center py-6 text-xs text-slate-500">
                           Nenhum cliente comprou este produto ainda.
                         </td>
                       </tr>
@@ -525,8 +537,8 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
 
       {/* Product List Card */}
       <div className="glass-panel rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto no-scrollbar">
-          <table className="w-full text-left text-xs border-collapse">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] text-left text-xs border-collapse">
             <thead>
               <tr className="text-slate-500 border-b border-slate-800 text-[9px] uppercase font-bold bg-slate-900/30">
                 <th className="py-3 px-4 w-1/4">Produto</th>

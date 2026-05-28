@@ -5,8 +5,17 @@ const brCurrencyFormatter = new Intl.NumberFormat('pt-BR', {
   maximumFractionDigits: 2
 });
 
+const brQuantityFormatter = new Intl.NumberFormat('pt-BR', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 3
+});
+
 export function formatCurrency(value: number | null | undefined): string {
   return brCurrencyFormatter.format(value ?? 0).replace(/[\u00A0\u202F]/g, ' ');
+}
+
+export function formatQuantity(value: number | null | undefined): string {
+  return brQuantityFormatter.format(value ?? 0).replace(/[\u00A0\u202F]/g, ' ');
 }
 
 export function formatSignedCurrency(value: number | null | undefined): string {

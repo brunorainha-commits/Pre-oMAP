@@ -10,7 +10,7 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { db } from '../services/db';
 import type { Product, Customer } from '../services/db';
-import { formatCurrency, formatSignedCurrency } from '../services/formatters';
+import { formatCurrency, formatQuantity, formatSignedCurrency } from '../services/formatters';
 import { matchesSearch } from '../services/search';
 
 export function PriceHistoryPage() {
@@ -361,8 +361,8 @@ export function PriceHistoryPage() {
               Histórico Detalhado de Conversões
             </h4>
 
-            <div className="overflow-x-auto no-scrollbar border border-slate-800/40 rounded-xl">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="overflow-x-auto border border-slate-800/40 rounded-xl">
+              <table className="w-full min-w-[980px] text-left text-xs border-collapse">
                 <thead>
                   <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold bg-slate-900/30">
                     <th className="py-2.5 px-3">Data</th>
@@ -385,11 +385,11 @@ export function PriceHistoryPage() {
                         <td className="py-2.5 px-3 text-slate-400 font-mono">{history.date}</td>
                         <td className="py-2.5 px-3 font-medium text-slate-200">{customer?.name || 'Cliente'}</td>
                         <td className="py-2.5 px-3 text-center text-slate-400 font-bold border-l border-slate-800/50">{history.commercial_unit || 'UN'}</td>
-                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{history.commercial_quantity}</td>
+                        <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{formatQuantity(history.commercial_quantity)}</td>
                         <td className="py-2.5 px-3 text-right text-slate-300">{formatCurrency(history.commercial_unit_price)}</td>
                         <td className="py-2.5 px-3 text-right text-slate-300">{formatCurrency(history.commercial_total_price)}</td>
-                        <td className="py-2.5 px-3 text-center text-amber-300 font-bold border-l border-brand-900/20 bg-brand-900/5">{history.units_per_package}</td>
-                        <td className="py-2.5 px-3 text-center text-emerald-400/80 font-mono bg-brand-900/5">{history.internal_quantity}</td>
+                        <td className="py-2.5 px-3 text-center text-amber-300 font-bold border-l border-brand-900/20 bg-brand-900/5">{formatQuantity(history.units_per_package)}</td>
+                        <td className="py-2.5 px-3 text-center text-emerald-400/80 font-mono bg-brand-900/5">{formatQuantity(history.internal_quantity)}</td>
                         <td className="py-2.5 px-3 text-center text-emerald-500 font-bold bg-brand-900/5">{history.internal_unit || 'UN'}</td>
                         <td className="py-2.5 px-3 text-right font-outfit text-emerald-400 font-bold bg-brand-900/5">{formatCurrency(history.internal_unit_price)}</td>
                       </tr>
@@ -414,8 +414,8 @@ export function PriceHistoryPage() {
               Comparativo de Preços Mapeados por Cliente
             </h4>
 
-            <div className="overflow-x-auto no-scrollbar border border-slate-800/40 rounded-xl">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="overflow-x-auto border border-slate-800/40 rounded-xl">
+              <table className="w-full min-w-[840px] text-left text-xs border-collapse">
                 <thead>
                   <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold bg-slate-900/30">
                     <th className="py-2.5 px-4">Cliente</th>
@@ -435,7 +435,7 @@ export function PriceHistoryPage() {
                       <tr key={item.customerId} className="hover:bg-slate-900/10">
                         <td className="py-2.5 px-4 font-medium text-slate-200">{item.customerName}</td>
                         <td className="py-2.5 px-4 text-center text-slate-400 font-mono">{item.lastPurchaseDate}</td>
-                        <td className="py-2.5 px-4 text-center text-slate-300 font-mono">{item.quantity} {activeProduct.default_internal_unit || 'UN'}</td>
+                        <td className="py-2.5 px-4 text-center text-slate-300 font-mono">{formatQuantity(item.quantity)} {activeProduct.default_internal_unit || 'UN'}</td>
                         <td className="py-2.5 px-4 text-right text-slate-400">
                           {item.prevPrice !== null ? formatCurrency(item.prevPrice) : 'Primeira compra'}
                         </td>

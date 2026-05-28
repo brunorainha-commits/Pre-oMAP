@@ -315,6 +315,7 @@ Local search:
 - Searches should be accent-insensitive, punctuation-insensitive, and match CNPJ/CPF with or without mask.
 - CustomersPage local search should match name, document, city, state, e-mail, phone, and notes.
 - Customer detail purchase history must show both commercial package/box price and internal unit price: commercial unit, commercial quantity, package price, units per package, internal quantity, internal unit, internal price, and total.
+- Customer detail purchase history now uses responsive cards instead of a very wide table, so the package price, conversion, internal quantity, and internal unit price are visible on desktop and mobile without being cut off.
 - OrdersPage local search should match customer fields, invoice/order identifiers, source file name, issue date, and order item/product fields such as product description, code, barcode, NCM, CFOP, commercial unit, and internal unit.
 - PriceHistoryPage has searchable product and customer filters before the selects.
 
@@ -391,6 +392,11 @@ Currency:
 - Use centralized formatters in `src/services/formatters.ts`.
 - Brazilian money should appear as `R$ 1.984,80`.
 - Avoid raw JS number display in UI.
+
+Quantities:
+
+- Use `formatQuantity` from `src/services/formatters.ts` for visible quantities.
+- Quantities should appear in Brazilian number format and never look like raw price strings.
 
 Date:
 
