@@ -333,14 +333,19 @@ export function CustomersPage({ userRole, selectedCustomerId, setSelectedCustome
                 <FileText className="w-4 h-4 text-accent-cyan" />
                 Produtos Adquiridos & Histórico de Preços
               </h4>
-              <div className="max-h-60 overflow-y-auto no-scrollbar border border-slate-800/40 rounded-xl">
+              <div className="max-h-72 overflow-auto no-scrollbar border border-slate-800/40 rounded-xl">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold bg-slate-900/30">
-                      <th className="py-2.5 px-3">Produto</th>
-                      <th className="py-2.5 px-3 text-center">Data</th>
-                      <th className="py-2.5 px-3 text-center">Qtd</th>
-                      <th className="py-2.5 px-3 text-right">Preço Unitário</th>
+                      <th className="py-2.5 px-3 min-w-[240px]">Produto</th>
+                      <th className="py-2.5 px-3 text-center min-w-[92px]">Data</th>
+                      <th className="py-2.5 px-3 text-center border-l border-slate-800/50">Un. Com.</th>
+                      <th className="py-2.5 px-3 text-center">Qtd Com.</th>
+                      <th className="py-2.5 px-3 text-right">Preço Emb.</th>
+                      <th className="py-2.5 px-3 text-center border-l border-brand-900/20 bg-brand-900/10 text-brand-400">Un/Emb</th>
+                      <th className="py-2.5 px-3 text-center bg-brand-900/10 text-brand-400">Qtd Int.</th>
+                      <th className="py-2.5 px-3 text-center bg-brand-900/10 text-brand-400">Un. Int.</th>
+                      <th className="py-2.5 px-3 text-right bg-brand-900/10 text-brand-400">Preço Int.</th>
                       <th className="py-2.5 px-3 text-right">Valor Total</th>
                     </tr>
                   </thead>
@@ -351,15 +356,20 @@ export function CustomersPage({ userRole, selectedCustomerId, setSelectedCustome
                         <tr key={idx} className="hover:bg-slate-900/10">
                           <td className="py-2.5 px-3 font-medium text-slate-200">{prodName}</td>
                           <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{ph.date}</td>
-                          <td className="py-2.5 px-3 text-center text-slate-300">{ph.internal_quantity}</td>
-                          <td className="py-2.5 px-3 text-right text-slate-300">{formatCurrency(ph.internal_unit_price)}</td>
+                          <td className="py-2.5 px-3 text-center text-slate-400 font-bold border-l border-slate-800/50">{ph.commercial_unit || 'UN'}</td>
+                          <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{ph.commercial_quantity}</td>
+                          <td className="py-2.5 px-3 text-right text-slate-200 font-semibold">{formatCurrency(ph.commercial_unit_price)}</td>
+                          <td className="py-2.5 px-3 text-center text-amber-300 font-bold border-l border-brand-900/20 bg-brand-900/5">{ph.units_per_package}</td>
+                          <td className="py-2.5 px-3 text-center text-emerald-400/80 font-mono bg-brand-900/5">{ph.internal_quantity}</td>
+                          <td className="py-2.5 px-3 text-center text-emerald-500 font-bold bg-brand-900/5">{ph.internal_unit || 'UN'}</td>
+                          <td className="py-2.5 px-3 text-right text-emerald-400 font-semibold bg-brand-900/5">{formatCurrency(ph.internal_unit_price)}</td>
                           <td className="py-2.5 px-3 text-right font-outfit text-white font-semibold">{formatCurrency(ph.commercial_total_price)}</td>
                         </tr>
                       );
                     })}
                     {custPriceHistory.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="text-center py-6 text-xs text-slate-500">
+                        <td colSpan={10} className="text-center py-6 text-xs text-slate-500">
                           Nenhum produto registrado neste cliente.
                         </td>
                       </tr>

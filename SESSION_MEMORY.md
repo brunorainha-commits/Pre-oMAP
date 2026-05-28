@@ -314,6 +314,7 @@ Local search:
 - Shared helper: `src/services/search.ts`.
 - Searches should be accent-insensitive, punctuation-insensitive, and match CNPJ/CPF with or without mask.
 - CustomersPage local search should match name, document, city, state, e-mail, phone, and notes.
+- Customer detail purchase history must show both commercial package/box price and internal unit price: commercial unit, commercial quantity, package price, units per package, internal quantity, internal unit, internal price, and total.
 - OrdersPage local search should match customer fields, invoice/order identifiers, source file name, issue date, and order item/product fields such as product description, code, barcode, NCM, CFOP, commercial unit, and internal unit.
 - PriceHistoryPage has searchable product and customer filters before the selects.
 
