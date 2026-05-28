@@ -306,6 +306,8 @@ export async function parsePdfInvoice(pdfBuffer: ArrayBuffer, fileName: string):
     const tokens = line.split(/\s+/);
     if (tokens.length < 4) continue;
 
+    const initialItemsCount = items.length;
+
     // Try to find a measurement unit token
     const unitIdx = tokens.findIndex(t => units.includes(t.toLowerCase()));
     if (unitIdx > 0 && unitIdx < tokens.length - 2) {
@@ -352,6 +354,126 @@ export async function parsePdfInvoice(pdfBuffer: ArrayBuffer, fileName: string):
             unit: tokens[unitIdx].toUpperCase(),
             unit_price: price,
             total_price: total,
+            discount: null
+          });
+        }
+      }
+    }
+
+    // FALLBACK: Math relation parsing (Qty * Price = Total) for rows without unit tokens
+    if (items.length === initialItemsCount) {
+      // Merge "R$" with the next token if it's separate
+      const cleanTokens: string[] = [];
+      for (let t = 0; t < tokens.length; t++) {
+        const token = tokens[t];
+        if ((token === 'R$' || token === 'r$') && t + 1 < tokens.length) {
+          cleanTokens.push('R$' + tokens[t + 1]);
+          t++;
+        } else {
+          cleanTokens.push(token);
+        }
+      }
+
+      const getNumericValue = (str: string): number => {
+        const clean = str.replace(/r\$/i, '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+        return parseFloat(clean);
+      };
+
+      let foundRelation = false;
+      let itemTotal = 0;
+      let itemPrice = 0;
+      let itemQty = 0;
+      let qtyIdx = -1;
+      let priceIdx = -1;
+
+      const L = cleanTokens.length;
+      if (L >= 4) {
+        for (let tIdx = L - 1; tIdx >= L - 2 && tIdx >= 0; tIdx--) {
+          const totalVal = getNumericValue(cleanTokens[tIdx]);
+          if (isNaN(totalVal) || totalVal <= 0) continue;
+
+          for (let pIdx = tIdx - 1; pIdx >= tIdx - 3 && pIdx >= 0; pIdx--) {
+            const priceVal = getNumericValue(cleanTokens[pIdx]);
+            if (isNaN(priceVal) || priceVal <= 0 || priceVal >= totalVal) continue;
+
+            for (let qIdx = pIdx - 1; qIdx >= pIdx - 3 && qIdx >= 0; qIdx--) {
+              const qtyVal = getNumericValue(cleanTokens[qIdx]);
+              if (isNaN(qtyVal) || qtyVal <= 0) continue;
+
+              const expectedTotal = qtyVal * priceVal;
+              // Allow small rounding differences (up to 1% or R$1.00)
+              if (Math.abs(expectedTotal - totalVal) < 0.01 * totalVal || Math.abs(expectedTotal - totalVal) < 1.0) {
+                itemTotal = totalVal;
+                itemPrice = priceVal;
+                itemQty = qtyVal;
+                qtyIdx = qIdx;
+                priceIdx = pIdx;
+                foundRelation = true;
+                break;
+              }
+            }
+            if (foundRelation) break;
+          }
+          if (foundRelation) break;
+        }
+      }
+
+      if (foundRelation) {
+        let descTokens = cleanTokens.slice(0, qtyIdx);
+        let ncm: string | null = null;
+        let code: string | null = null;
+        let cfop: string | null = null;
+        let extractedUnit = 'UN';
+
+        // Check if there is a unit token between qty and price (e.g. "5102 UN R$ 3.00")
+        for (let u = qtyIdx + 1; u < priceIdx; u++) {
+          const possibleUnit = cleanTokens[u].toLowerCase();
+          if (units.includes(possibleUnit) || /^[a-zA-Z]{1,3}$/.test(possibleUnit)) {
+            extractedUnit = possibleUnit.toUpperCase();
+            break;
+          }
+        }
+
+        const filteredDescTokens: string[] = [];
+        for (const token of descTokens) {
+          const cleanToken = token.trim();
+          if (cleanToken.length === 0) continue;
+
+          if (/\d{4}-\d{2}-\d{2}/.test(cleanToken) || /\d{2}\/\d{2}\/\d{4}/.test(cleanToken)) {
+            continue;
+          }
+          if (/^\d{8}$/.test(cleanToken)) {
+            ncm = cleanToken;
+            continue;
+          }
+          if (/^[56]\d{3}$/.test(cleanToken)) {
+            cfop = cleanToken;
+            continue;
+          }
+          if (/^\d{3,4}$/.test(cleanToken)) {
+            // Ignore small tax or CST/CSOSN codes like 0101, 060, etc.
+            continue;
+          }
+          if (filteredDescTokens.length === 0 && /^[a-zA-Z0-9-]{3,12}$/.test(cleanToken) && !/^[0-9]+$/.test(cleanToken)) {
+            code = cleanToken;
+            continue;
+          }
+          filteredDescTokens.push(token);
+        }
+
+        const description = filteredDescTokens.join(' ').trim();
+        if (description.length > 2 && !description.toLowerCase().includes('valor') && !description.toLowerCase().includes('total')) {
+          items.push({
+            product_code: code,
+            barcode: null,
+            description,
+            normalized_description: getNormalizedDescription(description),
+            ncm,
+            cfop,
+            quantity: itemQty,
+            unit: extractedUnit,
+            unit_price: itemPrice,
+            total_price: itemTotal,
             discount: null
           });
         }
