@@ -14,7 +14,7 @@ import { AlertsPage } from './components/AlertsPage';
 
 import { db } from './services/db';
 import type { UserRole, NormalizedInvoice } from './services/db';
-import { generateAlerts, getActionableAlerts } from './services/alerts';
+import { dismissAlert, dismissAlerts, generateAlerts, getActionableAlerts } from './services/alerts';
 import type { CommercialAlert } from './services/alerts';
 
 
@@ -29,6 +29,7 @@ function App() {
 
   // Active invoice being reviewed (takes over screen if active)
   const [activeReviewInvoice, setActiveReviewInvoice] = useState<NormalizedInvoice | null>(null);
+  const [reviewQueue, setReviewQueue] = useState<NormalizedInvoice[]>([]);
 
   // Alerts feed state
   const [alerts, setAlerts] = useState<CommercialAlert[]>([]);
@@ -42,6 +43,28 @@ function App() {
 
   const refreshAlerts = () => {
     setAlerts(generateAlerts());
+  };
+
+  const handleDismissAlert = (alertId: string) => {
+    dismissAlert(alertId);
+    refreshAlerts();
+  };
+
+  const handleDismissAlerts = (alertIds: string[]) => {
+    dismissAlerts(alertIds);
+    refreshAlerts();
+  };
+
+  const startSingleReview = (invoice: NormalizedInvoice) => {
+    setReviewQueue([]);
+    setActiveReviewInvoice(invoice);
+  };
+
+  const startBatchReview = (invoices: NormalizedInvoice[]) => {
+    const readyInvoices = invoices.filter(Boolean);
+    if (readyInvoices.length === 0) return;
+    setReviewQueue(readyInvoices.slice(1));
+    setActiveReviewInvoice(readyInvoices[0]);
   };
 
   const handleRoleChange = (role: UserRole) => {
@@ -82,9 +105,17 @@ function App() {
       // 2. Import elements
       const newOrder = db.importInvoice(finalInvoice);
 
-      // 3. Clear review and navigate
-      setActiveReviewInvoice(null);
+      // 3. Continue queued XML reviews or finish
       refreshAlerts();
+      const [nextInvoice, ...remainingQueue] = reviewQueue;
+      if (nextInvoice) {
+        setReviewQueue(remainingQueue);
+        setActiveReviewInvoice(nextInvoice);
+        return;
+      }
+
+      setActiveReviewInvoice(null);
+      setReviewQueue([]);
       setSelectedOrderId(newOrder.id);
       setCurrentTab('orders');
       
@@ -95,8 +126,10 @@ function App() {
   };
 
   const handleCancelReview = () => {
-    if (confirm("Deseja cancelar a revisão? Todos os dados extraídos desta nota serão descartados.")) {
+    const queueMessage = reviewQueue.length > 0 ? ` e mais ${reviewQueue.length} XML(s) na fila` : '';
+    if (confirm(`Deseja cancelar a revisão desta nota${queueMessage}? Os dados extraídos serão descartados da fila de revisão.`)) {
       setActiveReviewInvoice(null);
+      setReviewQueue([]);
     }
   };
 
@@ -117,7 +150,8 @@ function App() {
         return (
           <UploadPage 
             userRole={userRole}
-            onReviewInvoice={(inv) => setActiveReviewInvoice(inv)}
+            onReviewInvoice={startSingleReview}
+            onReviewInvoices={startBatchReview}
           />
         );
       case 'customers':
@@ -157,6 +191,8 @@ function App() {
             onSelectOrder={setSelectedOrderId}
             alerts={alerts}
             onRefreshAlerts={refreshAlerts}
+            onDismissAlert={handleDismissAlert}
+            onDismissAlerts={handleDismissAlerts}
           />
         );
 
@@ -191,6 +227,7 @@ function App() {
             onSelectProduct={setSelectedProductId}
             onSelectOrder={setSelectedOrderId}
             alerts={alerts}
+            onDismissAlert={handleDismissAlert}
           />
         </div>
 

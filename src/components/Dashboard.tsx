@@ -115,10 +115,7 @@ export function Dashboard({
   const priceAlerts = alerts.filter(a => a.type === 'price_increase' || a.type === 'price_decrease').slice(0, 4);
   const actionableAlerts = getActionableAlerts(alerts);
   const highAlertsCount = alerts.filter(a => a.severity === 'high').length;
-  const mediumAlertsCount = alerts.filter(a => a.severity === 'medium').length;
-  const alertSummary = highAlertsCount > 0
-    ? `Atenção: ${highAlertsCount} ${highAlertsCount === 1 ? 'alerta crítico precisa' : 'alertas críticos precisam'} de análise.`
-    : `${mediumAlertsCount} ${mediumAlertsCount === 1 ? 'alerta de atenção merece' : 'alertas de atenção merecem'} revisão.`;
+  const alertSummary = `Atenção: ${highAlertsCount} ${highAlertsCount === 1 ? 'alerta crítico precisa' : 'alertas críticos precisam'} de análise.`;
 
   // 6. Latest Orders
   const latestOrders = [...orders]
@@ -142,7 +139,7 @@ export function Dashboard({
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
             <span>
-              {alertSummary} Informativos de baixa prioridade ficam apenas na central de alertas.
+              {alertSummary} Os demais avisos ficam apenas na central de alertas.
             </span>
           </div>
           <button 

@@ -8,7 +8,8 @@ import {
   UserPlus, 
   AlertOctagon, 
   Copy,
-  ArrowRight
+  ArrowRight,
+  X
 } from 'lucide-react';
 import type { CommercialAlert } from '../services/alerts';
 
@@ -19,6 +20,8 @@ interface AlertsPageProps {
   onSelectOrder: (id: string) => void;
   alerts: CommercialAlert[];
   onRefreshAlerts: () => void;
+  onDismissAlert: (alertId: string) => void;
+  onDismissAlerts: (alertIds: string[]) => void;
 }
 
 export function AlertsPage({ 
@@ -27,7 +30,9 @@ export function AlertsPage({
   onSelectProduct, 
   onSelectOrder,
   alerts,
-  onRefreshAlerts
+  onRefreshAlerts,
+  onDismissAlert,
+  onDismissAlerts
 }: AlertsPageProps) {
 
   useEffect(() => {
@@ -58,6 +63,7 @@ export function AlertsPage({
 
   const handleAlertClick = (alert: CommercialAlert) => {
     const id = alert.target_id;
+    onDismissAlert(alert.id);
     if (alert.type === 'price_increase' || alert.type === 'price_decrease' || alert.type === 'new_product' || alert.type === 'duplicate_product') {
       onSelectProduct(id);
       setCurrentTab('products');
@@ -102,12 +108,22 @@ export function AlertsPage({
           <h2 className="text-2xl font-bold font-outfit text-white tracking-wide">Central de Alertas Inteligentes</h2>
           <p className="text-sm text-slate-400 mt-1">Notificações geradas automaticamente com base no histórico de faturamentos, preços e clientes.</p>
         </div>
-        <button
-          onClick={onRefreshAlerts}
-          className="text-xs font-semibold text-brand-400 hover:text-brand-300 px-3 py-1.5 border border-slate-850 hover:bg-slate-800/40 rounded-xl transition-all"
-        >
-          Atualizar Feed
-        </button>
+        <div className="flex items-center gap-2">
+          {alerts.length > 0 && (
+            <button
+              onClick={() => onDismissAlerts(alerts.map(alert => alert.id))}
+              className="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1.5 border border-slate-800 hover:bg-slate-800/60 rounded-xl transition-all"
+            >
+              Limpar avisos
+            </button>
+          )}
+          <button
+            onClick={onRefreshAlerts}
+            className="text-xs font-semibold text-brand-400 hover:text-brand-300 px-3 py-1.5 border border-slate-850 hover:bg-slate-800/40 rounded-xl transition-all"
+          >
+            Atualizar Feed
+          </button>
+        </div>
       </div>
 
       {/* Alerts Feed */}
@@ -132,9 +148,21 @@ export function AlertsPage({
                 </div>
               </div>
 
-              <div className="shrink-0 flex items-center gap-1.5 text-xs text-brand-400 hover:text-brand-300 font-semibold mt-1">
-                <span>Analisar</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+              <div className="shrink-0 flex items-center gap-2 mt-1">
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDismissAlert(alert.id);
+                  }}
+                  className="p-1.5 rounded-lg border border-slate-800 text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
+                  title="Dispensar aviso"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+                <div className="flex items-center gap-1.5 text-xs text-brand-400 hover:text-brand-300 font-semibold">
+                  <span>Analisar</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
               </div>
             </div>
           ))

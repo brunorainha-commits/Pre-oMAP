@@ -15,8 +15,32 @@ export interface CommercialAlert {
   created_at: string;
 }
 
+const DISMISSED_ALERTS_KEY = 'precomap_dismissed_alert_ids';
+
+function readDismissedAlertIds(): string[] {
+  try {
+    const stored = localStorage.getItem(DISMISSED_ALERTS_KEY);
+    const parsed = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed.filter(id => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDismissedAlertIds(ids: string[]): void {
+  localStorage.setItem(DISMISSED_ALERTS_KEY, JSON.stringify(Array.from(new Set(ids))));
+}
+
+export function dismissAlert(alertId: string): void {
+  writeDismissedAlertIds([...readDismissedAlertIds(), alertId]);
+}
+
+export function dismissAlerts(alertIds: string[]): void {
+  writeDismissedAlertIds([...readDismissedAlertIds(), ...alertIds]);
+}
+
 export function isActionableAlert(alert: CommercialAlert): boolean {
-  return alert.severity === 'high' || alert.severity === 'medium';
+  return alert.severity === 'high';
 }
 
 export function getActionableAlerts(alerts: CommercialAlert[]): CommercialAlert[] {
@@ -243,7 +267,9 @@ export function generateAlerts(): CommercialAlert[] {
     }
   });
 
-  return alerts.sort((a, b) => {
+  const dismissedAlertIds = new Set(readDismissedAlertIds());
+
+  return alerts.filter(alert => !dismissedAlertIds.has(alert.id)).sort((a, b) => {
     const severityWeight = { high: 3, medium: 2, low: 1 };
     return severityWeight[b.severity] - severityWeight[a.severity];
   });

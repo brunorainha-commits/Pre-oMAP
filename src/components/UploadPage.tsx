@@ -11,6 +11,7 @@ import type { NormalizedInvoice } from '../services/db';
 interface UploadPageProps {
   userRole: string;
   onReviewInvoice: (invoice: NormalizedInvoice) => void;
+  onReviewInvoices: (invoices: NormalizedInvoice[]) => void;
 }
 
 type FileQueueStatus =
@@ -32,7 +33,7 @@ interface UploadFileState {
   extractedData: NormalizedInvoice | null;
 }
 
-export function UploadPage({ userRole, onReviewInvoice }: UploadPageProps) {
+export function UploadPage({ userRole, onReviewInvoice, onReviewInvoices }: UploadPageProps) {
   const [fileList, setFileList] = useState<UploadFileState[]>([]);
   const [isDragActive, setIsDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -76,15 +77,16 @@ export function UploadPage({ userRole, onReviewInvoice }: UploadPageProps) {
     }
 
     const newFiles: UploadFileState[] = [];
+    const rejectedFiles: string[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const ext = file.name.split('.').pop()?.toLowerCase();
       if (ext !== 'xml') {
-        alert(`Formato não permitido. Envie apenas arquivos XML de nota fiscal.`);
+        rejectedFiles.push(`${file.name}: formato inválido`);
         continue;
       }
       if (file.size > 5 * 1024 * 1024) {
-        alert(`"${file.name}" excede 5 MB.`);
+        rejectedFiles.push(`${file.name}: excede 5 MB`);
         continue;
       }
       const entry: UploadFileState = {
@@ -99,9 +101,18 @@ export function UploadPage({ userRole, onReviewInvoice }: UploadPageProps) {
         extractedData: null
       };
       newFiles.push(entry);
-      triggerExtraction(entry);
     }
+    if (rejectedFiles.length > 0) {
+      alert(`Alguns arquivos não foram adicionados:\n${rejectedFiles.join('\n')}`);
+    }
+    if (newFiles.length === 0) return;
     setFileList(prev => [...prev, ...newFiles]);
+    newFiles.forEach(entry => {
+      void triggerExtraction(entry);
+    });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const triggerExtraction = async (entry: UploadFileState) => {
@@ -145,6 +156,16 @@ export function UploadPage({ userRole, onReviewInvoice }: UploadPageProps) {
   };
 
   const clearFile = (id: string) => setFileList(prev => prev.filter(f => f.id !== id));
+  const readyFiles = fileList.filter(file => file.status === 'review' && file.extractedData);
+  const processingFilesCount = fileList.filter(file => file.status === 'pending' || file.status === 'processing').length;
+
+  const handleReviewAllReady = () => {
+    const invoices = readyFiles
+      .map(file => file.extractedData)
+      .filter((invoice): invoice is NormalizedInvoice => Boolean(invoice));
+    if (invoices.length === 0) return;
+    onReviewInvoices(invoices);
+  };
 
   const getStatusBadge = (f: UploadFileState) => {
     const cls = 'text-[10px] px-2 py-0.5 rounded font-semibold flex items-center gap-1';
@@ -162,7 +183,7 @@ export function UploadPage({ userRole, onReviewInvoice }: UploadPageProps) {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold font-outfit text-white tracking-wide">Importar Pedidos</h1>
-          <p className="text-slate-400 mt-1">Faça o upload do XML da Nota Fiscal Eletrônica (NF-e)</p>
+          <p className="text-slate-400 mt-1">Faça upload de um ou vários XMLs da Nota Fiscal Eletrônica (NF-e)</p>
         </div>
       </div>
 
@@ -181,10 +202,10 @@ export function UploadPage({ userRole, onReviewInvoice }: UploadPageProps) {
           <UploadCloud className="w-10 h-10 text-brand-400" />
         </div>
         <h3 className="text-xl font-bold text-white mb-2">
-          {isDragActive ? 'Solte o arquivo aqui' : 'Arraste e solte o XML da nota'}
+          {isDragActive ? 'Solte os XMLs aqui' : 'Arraste e solte os XMLs das notas'}
         </h3>
         <p className="text-slate-400 mb-8 max-w-sm mx-auto leading-relaxed">
-          Arraste o arquivo .xml para esta área ou clique para selecionar do seu computador.
+          Arraste um ou vários arquivos .xml para esta área ou clique para selecionar do seu computador.
         </p>
 
         <input
@@ -198,13 +219,29 @@ export function UploadPage({ userRole, onReviewInvoice }: UploadPageProps) {
         />
 
         <button disabled={!canEdit} className="btn btn-primary shadow-lg shadow-brand-500/20 px-8 py-3 rounded-xl text-sm font-semibold hover:-translate-y-0.5 transition-all">
-          Selecionar Arquivos XML
+          Selecionar XMLs
         </button>
       </div>
 
       {fileList.length > 0 && (
         <div className="space-y-4 mt-8">
-          <h3 className="text-lg font-bold text-white">Arquivos Processados</h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold text-white">Arquivos adicionados</h3>
+              <p className="text-xs text-slate-500">
+                {readyFiles.length} pronto(s) para revisão
+                {processingFilesCount > 0 ? `, ${processingFilesCount} processando` : ''}
+              </p>
+            </div>
+            {readyFiles.length > 1 && (
+              <button
+                onClick={handleReviewAllReady}
+                className="btn btn-primary py-2 px-4 text-xs flex items-center justify-center gap-2"
+              >
+                Revisar {readyFiles.length} XMLs em sequência <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {fileList.map((file) => (
               <div key={file.id} className="glass-panel rounded-2xl p-4 flex flex-col transition-all hover:bg-slate-800/40 border border-slate-700/50">

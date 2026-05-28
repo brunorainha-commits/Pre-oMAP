@@ -12,6 +12,7 @@ interface TopbarProps {
   onSelectProduct: (id: string) => void;
   onSelectOrder: (id: string) => void;
   alerts: CommercialAlert[];
+  onDismissAlert: (alertId: string) => void;
 }
 
 export function Topbar({ 
@@ -19,7 +20,8 @@ export function Topbar({
   onSelectCustomer, 
   onSelectProduct, 
   onSelectOrder,
-  alerts
+  alerts,
+  onDismissAlert
 }: TopbarProps) {
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -250,7 +252,7 @@ export function Topbar({
           {showNotifications && (
             <div className="absolute right-0 top-12 w-80 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 space-y-3 z-50">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-xs font-semibold text-slate-200">Alertas de Atenção ({actionableAlerts.length})</span>
+                <span className="text-xs font-semibold text-slate-200">Avisos críticos ({actionableAlerts.length})</span>
                 <button 
                   onClick={() => {
                     setCurrentTab('alerts');
@@ -268,6 +270,7 @@ export function Topbar({
                     <div 
                       key={alert.id} 
                       onClick={() => {
+                        onDismissAlert(alert.id);
                         setShowNotifications(false);
                         setCurrentTab('alerts');
                       }}
@@ -283,7 +286,7 @@ export function Topbar({
                 </div>
               ) : (
                 <div className="text-center py-6 text-xs text-slate-500">
-                  Nenhum alerta de atenção no momento. Informativos ficam na central.
+                  Nenhum aviso crítico agora. Outros avisos ficam só na central.
                 </div>
               )}
             </div>
