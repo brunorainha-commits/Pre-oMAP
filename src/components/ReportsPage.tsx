@@ -79,8 +79,8 @@ export function ReportsPage() {
           if (!prodRevMap[it.product_id]) {
             prodRevMap[it.product_id] = { name: it.description, code: it.product_code || 'S/C', qty: 0, amt: 0 };
           }
-          prodRevMap[it.product_id].qty += it.quantity;
-          prodRevMap[it.product_id].amt += it.total_price;
+          prodRevMap[it.product_id].qty += it.internal_quantity;
+          prodRevMap[it.product_id].amt += it.commercial_total_price;
         });
 
         rows = Object.values(prodRevMap)
@@ -111,12 +111,12 @@ export function ReportsPage() {
             prodVolMap[it.product_id] = { 
               name: it.description, 
               code: it.product_code || 'S/C', 
-              unit: it.unit || 'UN', 
+              unit: it.commercial_unit || 'UN', 
               qty: 0,
               lastDate: lastD
             };
           }
-          prodVolMap[it.product_id].qty += it.quantity;
+          prodVolMap[it.product_id].qty += it.internal_quantity;
         });
 
         rows = Object.values(prodVolMap)
@@ -140,8 +140,8 @@ export function ReportsPage() {
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
           
           if (phs.length < 2) return null;
-          const latest = phs[phs.length - 1].unit_price;
-          const prev = phs[phs.length - 2].unit_price;
+          const latest = phs[phs.length - 1].internal_unit_price;
+          const prev = phs[phs.length - 2].internal_unit_price;
           const pct = prev > 0 ? ((latest - prev) / prev) * 100 : 0;
           
           if (pct <= 0) return null;
@@ -172,8 +172,8 @@ export function ReportsPage() {
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
           
           if (phs.length < 2) return null;
-          const latest = phs[phs.length - 1].unit_price;
-          const prev = phs[phs.length - 2].unit_price;
+          const latest = phs[phs.length - 1].internal_unit_price;
+          const prev = phs[phs.length - 2].internal_unit_price;
           const pct = prev > 0 ? ((latest - prev) / prev) * 100 : 0;
           
           if (pct >= 0) return null;
@@ -338,7 +338,7 @@ export function ReportsPage() {
             <h1 className="text-base font-bold font-outfit text-white tracking-wide print:text-black print:text-lg">{reportData.title}</h1>
             <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5 mt-0.5 print:text-slate-500">
               <Calendar className="w-3.5 h-3.5" />
-              Emitido em: {new Date().toLocaleDateString('pt-BR')} • PriceOrder Hub
+              Emitido em: {new Date().toLocaleDateString('pt-BR')} • PrecoMap
             </span>
           </div>
           <div className="bg-gradient-to-tr from-brand-600 to-accent-cyan p-2.5 rounded-xl text-white print:hidden">

@@ -80,8 +80,8 @@ export function generateAlerts(): CommercialAlert[] {
     const latestPh = history[history.length - 1];
     const previousPh = history[history.length - 2];
 
-    const currentPrice = latestPh.unit_price;
-    const prevPrice = previousPh.unit_price;
+    const currentPrice = latestPh.internal_unit_price;
+    const prevPrice = previousPh.internal_unit_price;
     
     if (prevPrice > 0) {
       const varPct = ((currentPrice - prevPrice) / prevPrice) * 100;

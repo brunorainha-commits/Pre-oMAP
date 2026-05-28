@@ -3,63 +3,124 @@
 import type { NormalizedInvoice } from './db';
 import { getNormalizedDescription } from './db';
 
+// Helper to query element by local name, ignoring namespaces
+const getElementByLocalName = (parent: Element | Document, localName: string): Element | null => {
+  // Try standard lookup first
+  const elements = parent.getElementsByTagName(localName);
+  if (elements.length > 0) return elements[0];
+  
+  // Fallback to suffix matching for namespaced tags
+  const allElements = parent.getElementsByTagName('*');
+  for (let i = 0; i < allElements.length; i++) {
+    const el = allElements[i];
+    const name = el.tagName;
+    if (name === localName || name.endsWith(':' + localName)) {
+      return el;
+    }
+  }
+  return null;
+};
+
+// Helper to query all elements by local name, ignoring namespaces
+const getAllElementsByLocalName = (parent: Element | Document, localName: string): Element[] => {
+  const elements = parent.getElementsByTagName(localName);
+  if (elements.length > 0) return Array.from(elements);
+  
+  const results: Element[] = [];
+  const allElements = parent.getElementsByTagName('*');
+  for (let i = 0; i < allElements.length; i++) {
+    const el = allElements[i];
+    const name = el.tagName;
+    if (name === localName || name.endsWith(':' + localName)) {
+      results.push(el);
+    }
+  }
+  return results;
+};
+
+// Helper to extract text value of a tag by local name
+const getTagValueByLocalName = (parent: Element | Document, localName: string): string | null => {
+  const el = getElementByLocalName(parent, localName);
+  return el ? el.textContent : null;
+};
+
 export function parseXmlInvoice(xmlText: string, fileName: string): NormalizedInvoice {
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
 
-  // Helper to extract text from a tag
-  const getTagValue = (parent: Element | Document, tagName: string): string | null => {
-    const el = parent.querySelector(tagName);
-    return el ? el.textContent : null;
-  };
+  // Check for parsing errors
+  const parserError = xmlDoc.querySelector('parsererror');
+  if (parserError) {
+    throw new Error('O arquivo XML fornecido é inválido ou está mal formatado. Não foi possível realizar o parsing estruturado.');
+  }
 
-  // Check if it's a valid NFe/XML
-  const chNFe = getTagValue(xmlDoc, 'chNFe') || getTagValue(xmlDoc, 'infNFe[Id]') || null;
+  // Check if it's a valid NFe/XML (has infNFe tag)
+  const infNFe = getElementByLocalName(xmlDoc, 'infNFe');
+  if (!infNFe && !getElementByLocalName(xmlDoc, 'nfeProc') && !getElementByLocalName(xmlDoc, 'NFe')) {
+    throw new Error('O arquivo XML carregado não corresponde a um layout válido de Nota Fiscal Eletrônica (NF-e ou NFC-e).');
+  }
+
+  // Invoice access key
+  let chNFe = getTagValueByLocalName(xmlDoc, 'chNFe');
+  if (!chNFe) {
+    // Try to extract from infNFe Id attribute (e.g. Id="NFe35190900000000000000550010000000011000000018")
+    const infNFeEl = getElementByLocalName(xmlDoc, 'infNFe');
+    if (infNFeEl) {
+      const idAttr = infNFeEl.getAttribute('Id');
+      if (idAttr && idAttr.startsWith('NFe')) {
+        chNFe = idAttr.substring(3);
+      }
+    }
+  }
   
-  // Invoice details
-  const invoiceNumber = getTagValue(xmlDoc, 'nNF');
-  const issueDateRaw = getTagValue(xmlDoc, 'dhEmi') || getTagValue(xmlDoc, 'dEmi');
+  // Invoice number
+  const invoiceNumber = getTagValueByLocalName(xmlDoc, 'nNF');
+  const issueDateRaw = getTagValueByLocalName(xmlDoc, 'dhEmi') || getTagValueByLocalName(xmlDoc, 'dEmi');
   const issueDate = issueDateRaw ? issueDateRaw.split('T')[0] : new Date().toISOString().split('T')[0];
 
   // Issuer details (Company)
-  const emitNode = xmlDoc.querySelector('emit');
-  const companyName = emitNode ? getTagValue(emitNode, 'xNome') : null;
-  const companyDocument = emitNode ? (getTagValue(emitNode, 'CNPJ') || getTagValue(emitNode, 'CPF')) : null;
+  const emitNode = getElementByLocalName(xmlDoc, 'emit');
+  const companyName = emitNode ? getTagValueByLocalName(emitNode, 'xNome') : null;
+  const companyDocument = emitNode ? (getTagValueByLocalName(emitNode, 'CNPJ') || getTagValueByLocalName(emitNode, 'CPF')) : null;
 
   // Customer details (Client)
-  const destNode = xmlDoc.querySelector('dest');
-  const customerName = destNode ? (getTagValue(destNode, 'xNome') || 'Cliente Consumidor') : 'Consumidor Final';
-  const customerDocument = destNode ? (getTagValue(destNode, 'CNPJ') || getTagValue(destNode, 'CPF')) : null;
+  const destNode = getElementByLocalName(xmlDoc, 'dest');
+  const customerName = destNode ? (getTagValueByLocalName(destNode, 'xNome') || 'Cliente Consumidor') : 'Consumidor Final';
+  const customerDocument = destNode ? (getTagValueByLocalName(destNode, 'CNPJ') || getTagValueByLocalName(destNode, 'CPF')) : null;
   
   // Customer address
-  const enderDestNode = destNode ? destNode.querySelector('enderDest') : null;
-  const customerCity = enderDestNode ? (getTagValue(enderDestNode, 'xMun') || undefined) : undefined;
-  const customerState = enderDestNode ? (getTagValue(enderDestNode, 'UF') || undefined) : undefined;
+  const enderDestNode = destNode ? getElementByLocalName(destNode, 'enderDest') : null;
+  const customerCity = enderDestNode ? (getTagValueByLocalName(enderDestNode, 'xMun') || null) : null;
+  const customerState = enderDestNode ? (getTagValueByLocalName(enderDestNode, 'UF') || null) : null;
 
   // Totals
-  const totalNode = xmlDoc.querySelector('total ICMSTot');
-  const totalAmount = totalNode ? parseFloat(getTagValue(totalNode, 'vNF') || '0') : 0;
-  const discountAmount = totalNode ? parseFloat(getTagValue(totalNode, 'vDesc') || '0') : 0;
-  const shippingAmount = totalNode ? parseFloat(getTagValue(totalNode, 'vFrete') || '0') : 0;
+  const totalNode = getElementByLocalName(xmlDoc, 'ICMSTot');
+  const totalAmount = totalNode ? parseFloat(getTagValueByLocalName(totalNode, 'vNF') || '0') : 0;
+  const discountAmount = totalNode ? parseFloat(getTagValueByLocalName(totalNode, 'vDesc') || '0') : 0;
+  const shippingAmount = totalNode ? parseFloat(getTagValueByLocalName(totalNode, 'vFrete') || '0') : 0;
 
   // Extract items
   const items: any[] = [];
-  const detNodes = xmlDoc.querySelectorAll('det');
+  const detNodes = getAllElementsByLocalName(xmlDoc, 'det');
   
   detNodes.forEach((det) => {
-    const prodNode = det.querySelector('prod');
+    const prodNode = getElementByLocalName(det, 'prod');
     if (!prodNode) return;
 
-    const productCode = getTagValue(prodNode, 'cProd');
-    const barcode = getTagValue(prodNode, 'cEAN');
-    const description = getTagValue(prodNode, 'xProd') || 'Produto sem nome';
-    const ncm = getTagValue(prodNode, 'NCM');
-    const cfop = getTagValue(prodNode, 'CFOP');
-    const quantity = parseFloat(getTagValue(prodNode, 'qCom') || '0');
-    const unit = getTagValue(prodNode, 'uCom');
-    const unitPrice = parseFloat(getTagValue(prodNode, 'vUnCom') || '0');
-    const totalItemPrice = parseFloat(getTagValue(prodNode, 'vProd') || '0');
-    const itemDiscount = parseFloat(getTagValue(prodNode, 'vDesc') || '0');
+    const productCode = getTagValueByLocalName(prodNode, 'cProd');
+    const barcode = getTagValueByLocalName(prodNode, 'cEAN');
+    const description = getTagValueByLocalName(prodNode, 'xProd') || 'Produto sem nome';
+    const ncm = getTagValueByLocalName(prodNode, 'NCM');
+    const cfop = getTagValueByLocalName(prodNode, 'CFOP');
+    const quantity = parseFloat(getTagValueByLocalName(prodNode, 'qCom') || '0');
+    const unit = getTagValueByLocalName(prodNode, 'uCom');
+    const unitPrice = parseFloat(getTagValueByLocalName(prodNode, 'vUnCom') || '0');
+    const totalItemPrice = parseFloat(getTagValueByLocalName(prodNode, 'vProd') || '0');
+    const itemDiscount = parseFloat(getTagValueByLocalName(prodNode, 'vDesc') || '0');
+
+    const uTrib = getTagValueByLocalName(prodNode, 'uTrib');
+    const qTrib = parseFloat(getTagValueByLocalName(prodNode, 'qTrib') || '0');
+    const vUnTrib = parseFloat(getTagValueByLocalName(prodNode, 'vUnTrib') || '0');
 
     items.push({
       product_code: productCode,
@@ -68,10 +129,16 @@ export function parseXmlInvoice(xmlText: string, fileName: string): NormalizedIn
       normalized_description: getNormalizedDescription(description),
       ncm,
       cfop,
-      quantity,
-      unit,
-      unit_price: unitPrice,
-      total_price: totalItemPrice,
+      
+      commercial_unit: unit,
+      commercial_quantity: quantity,
+      commercial_unit_price: unitPrice,
+      commercial_total_price: totalItemPrice,
+      
+      uTrib,
+      qTrib,
+      vUnTrib,
+      
       discount: itemDiscount > 0 ? itemDiscount : null
     });
   });
@@ -88,15 +155,14 @@ export function parseXmlInvoice(xmlText: string, fileName: string): NormalizedIn
     customer_document: customerDocument,
     customer_city: customerCity,
     customer_state: customerState,
-    company_name: companyName,
-    company_document: companyDocument,
-    total_amount: totalAmount > 0 ? totalAmount : items.reduce((sum, item) => sum + item.total_price, 0),
+    issuer_name: companyName,
+    issuer_document: companyDocument,
+    total_amount: totalAmount > 0 ? totalAmount : items.reduce((sum, item) => sum + item.commercial_total_price, 0),
+    products_amount: totalAmount > 0 ? totalAmount : null,
     discount_amount: discountAmount > 0 ? discountAmount : null,
     shipping_amount: shippingAmount > 0 ? shippingAmount : null,
-    status: 'review', // Defaults to review first
-    confidence_score: 1.0, // XML is 100% confidence
+    status: 'review',
     items,
-    raw_text: null,
     raw_xml: xmlText,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()

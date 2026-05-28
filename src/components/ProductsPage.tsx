@@ -12,6 +12,7 @@ import {
   Plus,
   X
 } from 'lucide-react';
+
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { db } from '../services/db';
 import type { Product } from '../services/db';
@@ -73,7 +74,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
     setFormBarcode(prod.barcode || '');
     setFormCategory(prod.category || '');
     setFormBrand(prod.brand || '');
-    setFormUnit(prod.unit || '');
+    setFormUnit(prod.default_commercial_unit || '');
     setFormNcm(prod.ncm || '');
     setFormNotes(prod.notes || '');
     setShowModal(true);
@@ -110,7 +111,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
       barcode: formBarcode || null,
       category: formCategory || 'Não Categorizado',
       brand: formBrand || null,
-      unit: formUnit || 'UN',
+      default_commercial_unit: formUnit || 'UN',
       ncm: formNcm || null,
       notes: formNotes || null,
       first_seen_at: editingProduct ? editingProduct.first_seen_at : null,
@@ -155,48 +156,54 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
     }
 
     const priceHistory = db.getPriceHistoryByProduct(prod.id);
+    const unitsInBox = prod.units_per_package || 1;
     
     // Calculate stats
-    const totalQty = priceHistory.reduce((sum, ph) => sum + ph.quantity, 0);
-    const totalAmount = priceHistory.reduce((sum, ph) => sum + ph.total_price, 0);
+    const totalQty = priceHistory.reduce((sum, ph) => sum + ph.internal_quantity, 0);
+    const totalAmount = priceHistory.reduce((sum, ph) => sum + ph.commercial_total_price, 0);
     const averagePrice = priceHistory.length > 0 ? totalAmount / totalQty : 0;
     
-    const prices = priceHistory.map(ph => ph.unit_price);
+    const prices = priceHistory.map(ph => ph.internal_unit_price);
     const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
     const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
     
     const latestPh = priceHistory[priceHistory.length - 1];
-    const latestPrice = latestPh ? latestPh.unit_price : 0;
+    const latestPrice = latestPh ? latestPh.internal_unit_price : 0;
     
     const previousPh = priceHistory[priceHistory.length - 2];
-    const prevPrice = previousPh ? previousPh.unit_price : 0;
+    const prevPrice = previousPh ? previousPh.internal_unit_price : 0;
 
     const varPct = prevPrice > 0 ? ((latestPrice - prevPrice) / prevPrice) * 100 : 0;
 
     // Get list of buyers
-    const buyerMap: Record<string, { name: string; lastPurchase: string; qty: number; minP: number; maxP: number; lastP: number }> = {};
+    const buyerMap: Record<string, { name: string; lastPurchase: string; qty: number; minP: number; maxP: number; lastP: number; minPUn: number; lastPUn: number }> = {};
     priceHistory.forEach(ph => {
       const cust = db.getCustomerById(ph.customer_id);
       if (!cust) return;
+      const calcUnit = ph.internal_unit_price;
 
       if (!buyerMap[ph.customer_id]) {
         buyerMap[ph.customer_id] = {
           name: cust.name,
           lastPurchase: ph.date,
           qty: 0,
-          minP: ph.unit_price,
-          maxP: ph.unit_price,
-          lastP: ph.unit_price
+          minP: ph.commercial_unit_price,
+          maxP: ph.commercial_unit_price,
+          lastP: ph.commercial_unit_price,
+          minPUn: calcUnit,
+          lastPUn: calcUnit
         };
       }
 
       const buyer = buyerMap[ph.customer_id];
-      buyer.qty += ph.quantity;
-      buyer.minP = Math.min(buyer.minP, ph.unit_price);
-      buyer.maxP = Math.max(buyer.maxP, ph.unit_price);
-      buyer.lastP = ph.unit_price;
+      buyer.qty += ph.internal_quantity;
+      buyer.minP = Math.min(buyer.minP, ph.commercial_unit_price);
+      buyer.maxP = Math.max(buyer.maxP, ph.commercial_unit_price);
+      buyer.minPUn = Math.min(buyer.minPUn, calcUnit);
       if (new Date(ph.date).getTime() > new Date(buyer.lastPurchase).getTime()) {
         buyer.lastPurchase = ph.date;
+        buyer.lastP = ph.commercial_unit_price;
+        buyer.lastPUn = calcUnit;
       }
     });
 
@@ -208,7 +215,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
       const [year, month, day] = ph.date.split('-');
       return {
         date: `${day}/${month}/${year.substring(2)}`,
-        Preço: ph.unit_price,
+        Preço: ph.internal_unit_price,
         Cliente: cust ? (cust.name.length > 15 ? cust.name.substring(0, 12) + '...' : cust.name) : 'Outros'
       };
     });
@@ -353,9 +360,10 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                     <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold bg-slate-900/30">
                       <th className="py-2.5 px-3">Cliente</th>
                       <th className="py-2.5 px-3 text-center">Volume Comprado</th>
-                      <th className="py-2.5 px-3 text-right">Menor Preço</th>
-                      <th className="py-2.5 px-3 text-right">Último Preço</th>
-                      <th className="py-2.5 px-3 text-center">Última Transação</th>
+                      <th className="py-2.5 px-3 text-right">Menor Preço (Cx)</th>
+                      <th className="py-2.5 px-3 text-right">Último Preço (Cx)</th>
+                      <th className="py-2.5 px-3 text-right text-emerald-400">R$ Unidade</th>
+                      <th className="py-2.5 px-3 text-center">Data Transação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/20">
@@ -365,6 +373,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                         <td className="py-2.5 px-3 text-center text-slate-300 font-mono">{buyer.qty} {prod.unit}</td>
                         <td className="py-2.5 px-3 text-right text-slate-400">R$ {buyer.minP.toFixed(2)}</td>
                         <td className="py-2.5 px-3 text-right font-outfit text-white font-bold">R$ {buyer.lastP.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right font-outfit text-emerald-400 font-bold">R$ {buyer.lastPUn.toFixed(2)}</td>
                         <td className="py-2.5 px-3 text-center text-slate-400 font-mono">{buyer.lastPurchase}</td>
                       </tr>
                     ))}
@@ -460,11 +469,11 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
             <tbody className="divide-y divide-slate-800/40">
               {filteredProducts.map((prod) => {
                 const history = db.getPriceHistoryByProduct(prod.id);
-                const totalQty = history.reduce((sum, h) => sum + h.quantity, 0);
-                const totalAmt = history.reduce((sum, h) => sum + h.total_price, 0);
+                const totalQty = history.reduce((sum, h) => sum + h.internal_quantity, 0);
+                const totalAmt = history.reduce((sum, h) => sum + h.commercial_total_price, 0);
                 const avgPrice = totalQty > 0 ? totalAmt / totalQty : 0;
                 
-                const lastPrice = history.length > 0 ? history[history.length - 1].unit_price : 0;
+                const lastPrice = history.length > 0 ? history[history.length - 1].internal_unit_price : 0;
 
                 return (
                   <tr 
@@ -484,7 +493,7 @@ export function ProductsPage({ userRole, selectedProductId, setSelectedProductId
                       <div className="text-[9px] text-slate-500 mt-0.5">{prod.brand || 'S/Marca'}</div>
                     </td>
                     <td className="py-3 px-4 text-center font-bold text-slate-300">
-                      {prod.unit}
+                      {prod.default_commercial_unit}
                     </td>
                     <td className="py-3 px-4 text-right text-slate-300 font-mono">
                       R$ {avgPrice.toFixed(2)}

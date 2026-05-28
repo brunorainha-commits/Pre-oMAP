@@ -293,8 +293,8 @@ export function Topbar({
             <User className="w-4 h-4 text-white" />
           </div>
           <div className="hidden md:block">
-            <div className="text-xs font-semibold text-slate-200 font-outfit leading-none">Operações UBBe</div>
-            <span className="text-[10px] text-slate-500 leading-none">PriceOrder Staff</span>
+            <div className="text-xs font-semibold text-slate-200 font-outfit leading-none">PrecoMap</div>
+            <span className="text-[10px] text-slate-500 leading-none">Operações Internas</span>
           </div>
         </div>
 

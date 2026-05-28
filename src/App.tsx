@@ -48,19 +48,7 @@ function App() {
     db.setUserRole(role);
   };
 
-  // Reset database callback
-  const handleResetDatabase = () => {
-    if (confirm("Deseja realmente apagar e restaurar os dados de fábrica? Todos os uploads e alterações manuais serão perdidos.")) {
-      db.resetDatabase();
-      setSelectedCustomerId(null);
-      setSelectedProductId(null);
-      setSelectedOrderId(null);
-      setActiveReviewInvoice(null);
-      setCurrentTab('dashboard');
-      refreshAlerts();
-      alert("Banco de dados resetado com sucesso com dados simulados ricos.");
-    }
-  };
+
 
   // Wipe database callback
   const handleWipeDatabase = () => {
@@ -171,6 +159,7 @@ function App() {
             onRefreshAlerts={refreshAlerts}
           />
         );
+
       default:
         return <div className="text-center py-20">Página em desenvolvimento.</div>;
     }
@@ -187,7 +176,6 @@ function App() {
           userRole={userRole}
           setUserRole={handleRoleChange}
           alertsCount={alerts.length}
-          onResetDB={handleResetDatabase}
           onWipeDB={handleWipeDatabase}
         />
       </div>

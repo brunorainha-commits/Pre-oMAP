@@ -6,11 +6,11 @@ import {
   Trash2, 
   User, 
   FileText, 
-  Package 
+  Package,
+  Activity
 } from 'lucide-react';
 import { db } from '../services/db';
 import type { NormalizedInvoice, Product } from '../services/db';
-
 
 interface ReviewPageProps {
   invoice: NormalizedInvoice;
@@ -48,14 +48,37 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
       if (idx !== index) return item;
       const updated = { ...item, [field]: value };
       
-      // Auto recalculate total if quantity or price changes
-      if (field === 'quantity' || field === 'unit_price') {
-        const q = field === 'quantity' ? parseFloat(value) || 0 : item.quantity;
-        const p = field === 'unit_price' ? parseFloat(value) || 0 : item.unit_price;
-        updated.total_price = Math.round((q * p) * 100) / 100;
+      // Auto recalculate total if commercial quantity or price changes
+      if (field === 'commercial_quantity' || field === 'commercial_unit_price') {
+        const q = field === 'commercial_quantity' ? parseFloat(value) || 0 : item.commercial_quantity;
+        const p = field === 'commercial_unit_price' ? parseFloat(value) || 0 : item.commercial_unit_price;
+        updated.commercial_total_price = Math.round((q * p) * 100) / 100;
+        
+        // Also recalculate internal logic
+        const upp = item.units_per_package || 1;
+        updated.internal_quantity = Math.round((q * upp) * 100) / 100;
+        updated.internal_unit_price = Math.round((updated.commercial_unit_price / upp) * 100) / 100;
+      }
+
+      // If units_per_package changes
+      if (field === 'units_per_package') {
+        const upp = value || 1;
+        updated.internal_quantity = Math.round((item.commercial_quantity * upp) * 100) / 100;
+        updated.internal_unit_price = Math.round((item.commercial_unit_price / upp) * 100) / 100;
       }
       
       return updated;
+    }));
+  };
+
+  // Auto-correct all totals
+  const handleAutoCorrectTotals = () => {
+    setItems(prev => prev.map(item => {
+      const correctTotal = Math.round((item.commercial_quantity * item.commercial_unit_price) * 100) / 100;
+      return {
+        ...item,
+        commercial_total_price: correctTotal
+      };
     }));
   };
 
@@ -72,7 +95,8 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
         barcode: prod.barcode,
         description: prod.name,
         normalized_description: prod.normalized_name,
-        unit: prod.unit || item.unit
+        commercial_unit: prod.default_commercial_unit || item.commercial_unit,
+        internal_unit: prod.default_internal_unit || item.internal_unit
       };
     }));
   };
@@ -93,17 +117,21 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
         normalized_description: 'novo item manual',
         ncm: '',
         cfop: '',
-        quantity: 1,
-        unit: 'UN',
-        unit_price: 0,
-        total_price: 0,
+        commercial_quantity: 1,
+        commercial_unit: 'UN',
+        commercial_unit_price: 0,
+        commercial_total_price: 0,
+        units_per_package: 1,
+        internal_unit: 'UN',
+        internal_quantity: 1,
+        internal_unit_price: 0,
         discount: null
       }
     ]);
   };
 
   // Calculate items sum
-  const itemsTotal = items.reduce((sum, item) => sum + (item.total_price || 0), 0);
+  const itemsTotal = items.reduce((sum, item) => sum + (item.commercial_total_price || 0), 0);
   const totalValue = Math.max(0, itemsTotal - discountAmount + shippingAmount);
 
   // Form submit handler
@@ -131,9 +159,10 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
       total_amount: Math.round(totalValue * 100) / 100,
       items: items.map(item => ({
         ...item,
-        quantity: parseFloat(item.quantity) || 0,
-        unit_price: parseFloat(item.unit_price) || 0,
-        total_price: parseFloat(item.total_price) || 0
+        commercial_quantity: parseFloat(item.commercial_quantity) || 0,
+        commercial_unit_price: parseFloat(item.commercial_unit_price) || 0,
+        commercial_total_price: parseFloat(item.commercial_total_price) || 0,
+        units_per_package: parseInt(item.units_per_package) || 1,
       })),
       status: 'completed'
     };
@@ -141,50 +170,42 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
     onSave(finalInvoice);
   };
 
-  const isPdf = invoice.source_file_type === 'pdf';
-  const confidencePercent = Math.round((invoice.confidence_score || 0.5) * 100);
+  const getOriginDetails = () => {
+    switch (invoice.data_origin) {
+      case 'xml_embedded': return { label: 'XML Oficial (DANFE)', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' };
+      case 'xml_api': return { label: 'XML via API', color: 'text-brand-400 bg-brand-500/10 border-brand-500/20' };
+      case 'xml_manual': return { label: 'XML Manual', color: 'text-sky-400 bg-sky-500/10 border-sky-500/20' };
+      default: return { label: 'XML', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' };
+    }
+  };
+  const origin = getOriginDetails();
 
   return (
-    <div className="space-y-6 animate-fade-in pb-12 max-w-6xl mx-auto">
+    <div className="space-y-6 animate-fade-in pb-12 max-w-7xl mx-auto">
       
-      {/* Top Banner Warning for PDF */}
-      {isPdf && (
-        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-4 rounded-2xl flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
-          <div className="text-xs leading-normal">
-            <strong className="font-semibold block text-amber-300">Conferência Recomendada (PDF)</strong>
-            Os dados extraídos de arquivos PDF podem conter imprecisões. Por favor, confira o cliente, produtos, quantidades e preços unitários antes de confirmar o salvamento na base comercial.
-          </div>
-        </div>
-      )}
-
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 glass-panel rounded-2xl p-5">
         <div>
-          <h2 className="text-2xl font-bold font-outfit text-white tracking-wide">Revise os dados do pedido antes de salvar</h2>
-          <p className="text-sm text-slate-400 mt-1">Valide e altere os campos abaixo mapeados a partir do arquivo <code className="text-slate-300 font-mono text-xs">{invoice.source_file_name}</code>.</p>
-        </div>
-
-        {/* Confidence badge */}
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <span className="text-[10px] text-slate-500 uppercase block font-semibold">Nível de Confiança</span>
-            <span className={`text-xs font-bold ${
-              confidencePercent > 80 ? 'text-emerald-400' : confidencePercent > 40 ? 'text-amber-400' : 'text-rose-400'
-            }`}>
-              {confidencePercent}% de precisão
+          <h2 className="text-xl font-bold font-outfit text-white tracking-wide">Revise os dados do pedido antes de salvar</h2>
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <span className="text-sm text-slate-400">Arquivo:</span>
+            <code className="text-slate-300 font-mono text-xs bg-slate-900 px-2 py-1 rounded">{invoice.source_file_name}</code>
+            <span className={`text-[10px] px-2 py-0.5 rounded font-semibold border ${origin.color}`}>
+              {origin.label}
             </span>
           </div>
-          <div className="w-10 h-10 rounded-full border-2 flex items-center justify-center font-bold text-xs" style={{
-            borderColor: confidencePercent > 80 ? '#10b981' : confidencePercent > 40 ? '#f59e0b' : '#f43f5e',
-            color: confidencePercent > 80 ? '#10b981' : confidencePercent > 40 ? '#f59e0b' : '#f43f5e'
-          }}>
-            {confidencePercent}
-          </div>
+          {invoice.invoice_key && (
+            <div className="mt-2 text-[10px] flex flex-wrap items-center gap-2">
+              <span className="text-slate-500 font-semibold uppercase">Chave de Acesso:</span>
+              <span className="font-mono text-emerald-400 tracking-widest bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
+                {invoice.invoice_key.match(/.{1,4}/g)?.join(' ') || invoice.invoice_key}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         
         {/* Left Column: Client and Invoice General Data */}
         <div className="space-y-6 lg:col-span-1">
@@ -322,20 +343,31 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
         </div>
 
         {/* Right Column: Editable Items Grid Table */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-3 space-y-4">
           <div className="glass-panel rounded-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
               <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
                 <Package className="w-4 h-4 text-accent-emerald" />
                 Itens da Nota / Produtos ({items.length})
               </h3>
-              <button
-                onClick={handleAddItem}
-                className="flex items-center gap-1 px-3 py-1 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg text-xs font-semibold transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Adicionar Item</span>
-              </button>
+              
+              <div className="flex items-center self-end sm:self-auto">
+                <button
+                  onClick={handleAutoCorrectTotals}
+                  className="flex items-center gap-1 px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 rounded-lg text-xs font-semibold transition-colors mr-2"
+                  title="Corrigir o total de todos os itens baseando-se em Quantidade * Preço Unitário"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Corrigir automaticamente totais</span>
+                </button>
+                <button
+                  onClick={handleAddItem}
+                  className="flex items-center gap-1 px-3 py-1 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg text-xs font-semibold transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Adicionar Item</span>
+                </button>
+              </div>
             </div>
 
             {/* Items list table */}
@@ -343,11 +375,13 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="text-slate-500 border-b border-slate-800 text-[10px] uppercase font-bold">
-                    <th className="py-2.5 pr-2">Link Produto existente / Cód.</th>
+                    <th className="py-2.5 pr-2 w-40">Cod / NCM / CFOP</th>
                     <th className="py-2.5 pr-2">Descrição Normalizada</th>
-                    <th className="py-2.5 pr-2 text-center w-12">Qtd</th>
-                    <th className="py-2.5 pr-2 text-center w-12">Un</th>
-                    <th className="py-2.5 pr-2 text-right w-20">Unitário (R$)</th>
+                    <th className="py-2.5 pr-2 text-center w-14">Emb</th>
+                    <th className="py-2.5 pr-2 text-center w-14">Qtd (cx)</th>
+                    <th className="py-2.5 pr-2 text-right w-20">R$ Cx</th>
+                    <th className="py-2.5 pr-2 text-center w-12">Un/Cx</th>
+                    <th className="py-2.5 pr-2 text-right w-20">R$ Un</th>
                     <th className="py-2.5 pr-2 text-right w-24">Total (R$)</th>
                     <th className="py-2.5 text-center w-8"></th>
                   </tr>
@@ -360,9 +394,20 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                       p.normalized_name === item.normalized_description
                     );
 
+                    // Math validation per row
+                    const expectedTotal = item.commercial_quantity * item.commercial_unit_price;
+                    const isRowInconsistent = Math.abs(expectedTotal - item.commercial_total_price) > 0.05;
+
                     return (
-                      <tr key={idx} className="group hover:bg-slate-900/10">
-                        {/* Link product selection or code */}
+                      <tr 
+                        key={idx} 
+                        className={`group transition-colors ${
+                          isRowInconsistent 
+                            ? 'bg-rose-500/5 hover:bg-rose-500/10' 
+                            : 'hover:bg-slate-900/10'
+                        }`}
+                      >
+                        {/* Link product / Code / NCM / CFOP inputs */}
                         <td className="py-3 pr-2">
                           <div className="space-y-1">
                             <input
@@ -370,12 +415,36 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                               value={item.product_code || ''}
                               onChange={(e) => handleItemChange(idx, 'product_code', e.target.value)}
                               placeholder="Código"
-                              className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded px-2 py-1 text-[10px] text-white focus:outline-none"
+                              className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-2 py-1 text-[10px] text-white focus:outline-none ${
+                                isRowInconsistent ? 'border-rose-500/20' : 'border-slate-800'
+                              }`}
                             />
+                            
+                            <div className="grid grid-cols-2 gap-1">
+                              <input
+                                type="text"
+                                value={item.ncm || ''}
+                                onChange={(e) => handleItemChange(idx, 'ncm', e.target.value)}
+                                placeholder="NCM"
+                                className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-1.5 py-0.5 text-[9px] text-white focus:outline-none ${
+                                  isRowInconsistent ? 'border-rose-500/20' : 'border-slate-800'
+                                }`}
+                              />
+                              <input
+                                type="text"
+                                value={item.cfop || ''}
+                                onChange={(e) => handleItemChange(idx, 'cfop', e.target.value)}
+                                placeholder="CFOP"
+                                className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-1.5 py-0.5 text-[9px] text-white focus:outline-none ${
+                                  isRowInconsistent ? 'border-rose-500/20' : 'border-slate-800'
+                                }`}
+                              />
+                            </div>
+
                             <select
                               onChange={(e) => handleLinkProduct(idx, e.target.value)}
                               value={matchedProd ? matchedProd.id : ''}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[9px] text-slate-400 focus:outline-none"
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[9px] text-slate-400 focus:outline-none mt-1"
                             >
                               <option value="">{matchedProd ? '✓ Vinculado' : '⚡ Criar novo produto'}</option>
                               {availableProducts.map(p => (
@@ -391,48 +460,90 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                             type="text"
                             value={item.description}
                             onChange={(e) => handleItemChange(idx, 'description', e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded px-2 py-1 text-[10px] text-white focus:outline-none font-medium"
+                            className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-2 py-1 text-[10px] text-white focus:outline-none font-medium ${
+                              isRowInconsistent ? 'border-rose-500/25' : 'border-slate-800'
+                            }`}
                           />
-                          <span className="text-[8px] text-slate-500 mt-0.5 block truncate max-w-[150px]">
+                          <span className="text-[8px] text-slate-500 mt-0.5 block truncate max-w-[200px]">
                             Norm: {item.normalized_description || 'n/a'}
                           </span>
+                        </td>
+
+                        {/* Unit / Emb */}
+                        <td className="py-3 pr-2 text-center">
+                          <input
+                            type="text"
+                            value={item.commercial_unit || ''}
+                            maxLength={3}
+                            onChange={(e) => handleItemChange(idx, 'commercial_unit', e.target.value.toUpperCase())}
+                            className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-1.5 py-1 text-[10px] text-white text-center focus:outline-none ${
+                              isRowInconsistent ? 'border-rose-500/25' : 'border-slate-800'
+                            }`}
+                          />
                         </td>
 
                         {/* Qtd */}
                         <td className="py-3 pr-2 text-center">
                           <input
                             type="number"
-                            value={item.quantity || ''}
-                            onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded px-1.5 py-1 text-[10px] text-white text-center focus:outline-none"
+                            step="any"
+                            value={item.commercial_quantity || ''}
+                            onChange={(e) => handleItemChange(idx, 'commercial_quantity', e.target.value)}
+                            className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-1.5 py-1 text-[10px] text-white text-center focus:outline-none ${
+                              isRowInconsistent ? 'border-rose-500/40 text-rose-300 font-semibold' : 'border-slate-800'
+                            }`}
                           />
                         </td>
 
-                        {/* Unit */}
-                        <td className="py-3 pr-2 text-center">
-                          <input
-                            type="text"
-                            value={item.unit || ''}
-                            maxLength={3}
-                            onChange={(e) => handleItemChange(idx, 'unit', e.target.value.toUpperCase())}
-                            className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded px-1.5 py-1 text-[10px] text-white text-center focus:outline-none"
-                          />
-                        </td>
-
-                        {/* Unit Price */}
+                        {/* Unit Price (Caixa) */}
                         <td className="py-3 pr-2 text-right">
                           <input
                             type="number"
-                            step="0.01"
-                            value={item.unit_price || ''}
-                            onChange={(e) => handleItemChange(idx, 'unit_price', e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-800 focus:border-brand-500 rounded px-2 py-1 text-[10px] text-white text-right focus:outline-none"
+                            step="any"
+                            value={item.commercial_unit_price || ''}
+                            onChange={(e) => handleItemChange(idx, 'commercial_unit_price', e.target.value)}
+                            className={`w-full bg-slate-950 border focus:border-brand-500 rounded px-2 py-1 text-[10px] text-white text-right focus:outline-none ${
+                              isRowInconsistent ? 'border-rose-500/40 text-rose-300 font-semibold' : 'border-slate-800'
+                            }`}
                           />
                         </td>
 
+                        {/* Un/Cx */}
+                        <td className="py-3 pr-2 text-center">
+                          <input
+                            type="number"
+                            step="1"
+                            value={item.units_per_package || 1}
+                            onChange={(e) => handleItemChange(idx, 'units_per_package', parseInt(e.target.value) || 1)}
+                            className="w-full bg-slate-950 border-slate-800 focus:border-brand-500 rounded px-1 py-1 text-[10px] text-brand-300 text-center font-bold focus:outline-none"
+                          />
+                        </td>
+
+                        {/* R$ Un (Calculado) */}
+                        <td className="py-3 pr-2 text-right">
+                          <div className="w-full bg-slate-950/50 border border-slate-800/50 rounded px-2 py-1 text-[10px] text-emerald-400 text-right font-bold">
+                            {item.internal_unit_price ? item.internal_unit_price.toFixed(2) : item.commercial_unit_price.toFixed(2)}
+                          </div>
+                        </td>
+
                         {/* Total Price */}
-                        <td className="py-3 pr-2 text-right font-outfit font-semibold text-slate-300">
-                          R$ {item.total_price?.toFixed(2)}
+                        <td className="py-3 pr-2 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isRowInconsistent && (
+                              <span title={`Qtd * Unitário = R$ ${expectedTotal.toFixed(2)} (Diferença de R$ ${Math.abs(expectedTotal - item.commercial_total_price).toFixed(2)})`}>
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                              </span>
+                            )}
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={item.commercial_total_price || ''}
+                              onChange={(e) => handleItemChange(idx, 'commercial_total_price', e.target.value)}
+                              className={`w-20 bg-slate-950 border focus:border-brand-500 rounded px-2 py-1 text-[10px] text-white text-right focus:outline-none font-semibold ${
+                                isRowInconsistent ? 'border-rose-500 text-rose-400 font-bold' : 'border-slate-800 text-slate-300'
+                              }`}
+                            />
+                          </div>
                         </td>
 
                         {/* Delete button */}
@@ -455,6 +566,26 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
         </div>
 
       </div>
+
+      {/* Technical Area (Logs & Debug) */}
+      {invoice.raw_text && (
+        <div className="glass-panel rounded-2xl p-5 mt-6 space-y-4">
+          <details className="group">
+            <summary className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between cursor-pointer list-none select-none">
+              <span className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-brand-500" />
+                Área Técnica e Logs do PDF (Expandir)
+              </span>
+              <span className="transition-transform group-open:rotate-185 text-slate-500">▼</span>
+            </summary>
+            <div className="mt-4 space-y-3">
+              <pre className="text-[10px] text-slate-400 bg-slate-950 p-4 rounded-xl border border-slate-900 overflow-x-auto font-mono max-h-96 whitespace-pre-wrap leading-relaxed">
+                {invoice.raw_text}
+              </pre>
+            </div>
+          </details>
+        </div>
+      )}
 
       {/* Save / Cancel buttons */}
       <div className="flex justify-end items-center gap-3 border-t border-slate-800/80 pt-6">

@@ -86,13 +86,13 @@ export function CustomersPage({ userRole, selectedCustomerId, setSelectedCustome
       return;
     }
     if (confirm("Tem certeza que deseja excluir este cliente? Esta ação não pode ser desfeita.")) {
-      const deleted = db.deleteCustomer(id);
-      if (deleted) {
+      try {
+        db.deleteCustomer(id);
         alert("Cliente excluído com sucesso.");
         if (selectedCustomerId === id) setSelectedCustomerId(null);
         loadCustomersList();
-      } else {
-        alert("Não é possível excluir este cliente pois ele possui pedidos vinculados.");
+      } catch (error: any) {
+        alert(`Erro ao excluir: ${error.message}`);
       }
     }
   };

@@ -11,7 +11,8 @@ import {
   Bell, 
   RotateCcw,
   Shield,
-  Activity
+  Activity,
+  Play
 } from 'lucide-react';
 import type { UserRole } from '../services/db';
 
@@ -22,7 +23,6 @@ interface SidebarProps {
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
   alertsCount: number;
-  onResetDB: () => void;
   onWipeDB: () => void;
 }
 
@@ -32,7 +32,6 @@ export function Sidebar({
   userRole, 
   setUserRole,
   alertsCount,
-  onResetDB,
   onWipeDB
 }: SidebarProps) {
 
@@ -68,8 +67,7 @@ export function Sidebar({
           <Activity className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h1 className="font-outfit font-bold text-lg text-white leading-none tracking-wide">PriceOrder</h1>
-          <span className="text-xs font-medium text-accent-cyan tracking-wider font-outfit uppercase">Hub</span>
+          <h1 className="font-outfit font-bold text-lg text-white leading-none tracking-wide">PrecoMap</h1>
         </div>
       </div>
 
@@ -129,13 +127,6 @@ export function Sidebar({
 
         {/* Developer Actions */}
         <div className="mt-3 space-y-2">
-          <button
-            onClick={onResetDB}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-slate-800 hover:bg-slate-800/50 hover:border-slate-700 text-xs font-medium rounded-lg text-slate-400 hover:text-slate-200 transition-all"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Resetar com Dados Demo</span>
-          </button>
           <button
             onClick={onWipeDB}
             className="w-full flex items-center justify-center gap-2 px-3 py-1.5 border border-rose-950/40 bg-rose-950/10 hover:bg-rose-950/20 text-rose-450 hover:text-rose-350 text-[10px] font-semibold rounded-lg transition-all"

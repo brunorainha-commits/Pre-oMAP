@@ -6,7 +6,8 @@ import {
   Percent, 
   TrendingUp, 
   TrendingDown, 
-  ChevronRight
+  ChevronRight,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -101,7 +102,7 @@ export function Dashboard({
         Qtd: 0
       };
     }
-    productQuantities[item.product_id].Qtd += item.quantity;
+    productQuantities[item.product_id].Qtd += item.internal_quantity;
   });
 
   const productRankings = Object.values(productQuantities)
@@ -126,6 +127,24 @@ export function Dashboard({
         <h2 className="text-2xl font-bold font-outfit text-white tracking-wide">Painel Geral</h2>
         <p className="text-sm text-slate-400 mt-1">Visão analítica de faturamentos, preços e comportamento de clientes.</p>
       </div>
+
+      {/* Alert Banner for system notifications */}
+      {alerts.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-5 py-3 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>
+              Existem <strong className="text-white">{alerts.length} alertas comerciais</strong> ativos na base. As principais detecções incluem {alerts.filter(a => a.severity === 'high').length} alertas de severidade alta (como inatividades de 90 dias ou desvios em preços).
+            </span>
+          </div>
+          <button 
+            onClick={() => setCurrentTab('alerts')}
+            className="self-end sm:self-auto bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-3.5 py-1.5 rounded-xl font-semibold transition-colors whitespace-nowrap"
+          >
+            Visualizar Alertas
+          </button>
+        </div>
+      )}
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5">
@@ -396,8 +415,8 @@ export function Dashboard({
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-semibold text-slate-200 truncate">{cust?.name || 'Cliente Desconhecido'}</div>
                       <span className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
-                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${isXml ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'}`}>
-                          {isXml ? 'XML' : 'PDF'}
+                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${isXml ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'}`}>
+                          {isXml ? 'XML' : 'Manual'}
                         </span>
                         Nota: {order.invoice_number || 'S/N'} • {order.issue_date}
                       </span>
@@ -413,7 +432,7 @@ export function Dashboard({
               })
             ) : (
               <div className="h-full flex items-center justify-center text-xs text-slate-500 text-center px-4">
-                Nenhum pedido importado ainda. Comece enviando seu primeiro XML ou PDF.
+                Nenhum pedido importado ainda. Comece enviando seu primeiro XML.
               </div>
             )}
           </div>

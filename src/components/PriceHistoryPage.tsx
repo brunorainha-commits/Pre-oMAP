@@ -56,8 +56,8 @@ export function PriceHistoryPage() {
     const latest = custHist[custHist.length - 1];
     const previous = custHist[custHist.length - 2];
 
-    const currentPrice = latest.unit_price;
-    const prevPrice = previous ? previous.unit_price : null;
+    const currentPrice = latest.internal_unit_price;
+    const prevPrice = previous ? previous.internal_unit_price : null;
     const diffAbs = prevPrice !== null ? currentPrice - prevPrice : 0;
     const diffPct = prevPrice !== null && prevPrice > 0 ? (diffAbs / prevPrice) * 100 : 0;
 
@@ -65,7 +65,7 @@ export function PriceHistoryPage() {
       customerId: cust.id,
       customerName: cust.name,
       lastPurchaseDate: latest.date,
-      quantity: latest.quantity,
+      quantity: latest.internal_quantity,
       currentPrice,
       prevPrice,
       diffAbs,
@@ -97,9 +97,9 @@ export function PriceHistoryPage() {
     const [year, month, day] = ph.date.split('-');
     return {
       date: `${day}/${month}/${year.substring(2)}`,
-      Preço: ph.unit_price,
+      Preço: ph.internal_unit_price,
       Cliente: cust ? cust.name : 'Outros',
-      Qtd: ph.quantity
+      Qtd: ph.internal_quantity
     };
   });
 
@@ -110,8 +110,8 @@ export function PriceHistoryPage() {
 
     // Check general increase
     if (filteredHistories.length >= 2) {
-      const latest = filteredHistories[filteredHistories.length - 1].unit_price;
-      const prev = filteredHistories[filteredHistories.length - 2].unit_price;
+      const latest = filteredHistories[filteredHistories.length - 1].internal_unit_price;
+      const prev = filteredHistories[filteredHistories.length - 2].internal_unit_price;
       if (prev > 0) {
         const pct = ((latest - prev) / prev) * 100;
         if (pct >= 10) {
@@ -258,11 +258,11 @@ export function PriceHistoryPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-900 text-center">
                       <span className="text-[9px] text-slate-500 uppercase block font-semibold">Menor Histórico</span>
-                      <span className="text-sm font-bold text-white mt-1 block">R$ {Math.min(...filteredHistories.map(h => h.unit_price)).toFixed(2)}</span>
+                      <span className="text-sm font-bold text-white mt-1 block">R$ {Math.min(...filteredHistories.map(h => h.internal_unit_price)).toFixed(2)}</span>
                     </div>
                     <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-900 text-center">
                       <span className="text-[9px] text-slate-500 uppercase block font-semibold">Maior Histórico</span>
-                      <span className="text-sm font-bold text-white mt-1 block">R$ {Math.max(...filteredHistories.map(h => h.unit_price)).toFixed(2)}</span>
+                      <span className="text-sm font-bold text-white mt-1 block">R$ {Math.max(...filteredHistories.map(h => h.internal_unit_price)).toFixed(2)}</span>
                     </div>
                   </div>
 
@@ -273,7 +273,7 @@ export function PriceHistoryPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Unidade Base:</span>
-                      <span className="font-bold text-brand-400">{activeProduct.unit || 'UN'}</span>
+                      <span className="font-bold text-brand-400">{activeProduct.default_commercial_unit || 'UN'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Categoria:</span>
@@ -285,7 +285,7 @@ export function PriceHistoryPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Preço atual:</span>
-                      <span className="font-bold text-white">R$ {filteredHistories[filteredHistories.length - 1].unit_price.toFixed(2)}</span>
+                      <span className="font-bold text-white">R$ {filteredHistories[filteredHistories.length - 1].internal_unit_price.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -326,7 +326,7 @@ export function PriceHistoryPage() {
                       <tr key={item.customerId} className="hover:bg-slate-900/10">
                         <td className="py-2.5 px-4 font-medium text-slate-200">{item.customerName}</td>
                         <td className="py-2.5 px-4 text-center text-slate-400 font-mono">{item.lastPurchaseDate}</td>
-                        <td className="py-2.5 px-4 text-center text-slate-300 font-mono">{item.quantity} {activeProduct.unit}</td>
+                        <td className="py-2.5 px-4 text-center text-slate-300 font-mono">{item.quantity} {activeProduct.default_commercial_unit}</td>
                         <td className="py-2.5 px-4 text-right text-slate-400">
                           {item.prevPrice !== null ? `R$ ${item.prevPrice.toFixed(2)}` : 'Primeira compra'}
                         </td>
