@@ -22,6 +22,7 @@ import {
   Cell
 } from 'recharts';
 import { db } from '../services/db';
+import { getActionableAlerts } from '../services/alerts';
 import type { CommercialAlert } from '../services/alerts';
 import { formatCurrency } from '../services/formatters';
 
@@ -112,6 +113,12 @@ export function Dashboard({
 
   // 5. Price Variations Alertas
   const priceAlerts = alerts.filter(a => a.type === 'price_increase' || a.type === 'price_decrease').slice(0, 4);
+  const actionableAlerts = getActionableAlerts(alerts);
+  const highAlertsCount = alerts.filter(a => a.severity === 'high').length;
+  const mediumAlertsCount = alerts.filter(a => a.severity === 'medium').length;
+  const alertSummary = highAlertsCount > 0
+    ? `Atenção: ${highAlertsCount} ${highAlertsCount === 1 ? 'alerta crítico precisa' : 'alertas críticos precisam'} de análise.`
+    : `${mediumAlertsCount} ${mediumAlertsCount === 1 ? 'alerta de atenção merece' : 'alertas de atenção merecem'} revisão.`;
 
   // 6. Latest Orders
   const latestOrders = [...orders]
@@ -130,12 +137,12 @@ export function Dashboard({
       </div>
 
       {/* Alert Banner for system notifications */}
-      {alerts.length > 0 && (
+      {actionableAlerts.length > 0 && (
         <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-5 py-3 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
             <span>
-              Existem <strong className="text-white">{alerts.length} alertas comerciais</strong> ativos na base. As principais detecções incluem {alerts.filter(a => a.severity === 'high').length} alertas de severidade alta (como inatividades de 90 dias ou desvios em preços).
+              {alertSummary} Informativos de baixa prioridade ficam apenas na central de alertas.
             </span>
           </div>
           <button 

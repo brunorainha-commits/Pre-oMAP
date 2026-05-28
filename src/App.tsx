@@ -14,7 +14,7 @@ import { AlertsPage } from './components/AlertsPage';
 
 import { db } from './services/db';
 import type { UserRole, NormalizedInvoice } from './services/db';
-import { generateAlerts } from './services/alerts';
+import { generateAlerts, getActionableAlerts } from './services/alerts';
 import type { CommercialAlert } from './services/alerts';
 
 
@@ -32,6 +32,7 @@ function App() {
 
   // Alerts feed state
   const [alerts, setAlerts] = useState<CommercialAlert[]>([]);
+  const actionableAlertsCount = getActionableAlerts(alerts).length;
 
   // Load configuration on mount
   useEffect(() => {
@@ -174,7 +175,7 @@ function App() {
           setCurrentTab={setCurrentTab}
           userRole={userRole}
           setUserRole={handleRoleChange}
-          alertsCount={alerts.length}
+          alertsCount={actionableAlertsCount}
           onWipeDB={handleWipeDatabase}
         />
       </div>

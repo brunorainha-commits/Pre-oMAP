@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Search, Bell, Calendar, User, FileText, Package, Users, X } from 'lucide-react';
 import { db } from '../services/db';
 import type { Customer, Product, Order } from '../services/db';
+import { getActionableAlerts } from '../services/alerts';
 import type { CommercialAlert } from '../services/alerts';
 import { formatCurrency } from '../services/formatters';
 
@@ -111,7 +112,8 @@ export function Topbar({
     }
   };
 
-  const activeAlerts = alerts.slice(0, 5); // limit notification dropdown to 5 items
+  const actionableAlerts = getActionableAlerts(alerts);
+  const activeAlerts = actionableAlerts.slice(0, 5); // limit notification dropdown to 5 items
 
   return (
     <header className="h-16 border-b border-slate-800/60 glass-panel fixed top-0 right-0 left-64 z-10 px-8 flex items-center justify-between text-slate-300">
@@ -238,9 +240,9 @@ export function Topbar({
             className="p-2 border border-slate-800 hover:bg-slate-800/50 hover:text-slate-100 rounded-xl relative transition-all"
           >
             <Bell className="w-4 h-4" />
-            {alerts.length > 0 && (
+            {actionableAlerts.length > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold">
-                {alerts.length}
+                {actionableAlerts.length}
               </span>
             )}
           </button>
@@ -248,7 +250,7 @@ export function Topbar({
           {showNotifications && (
             <div className="absolute right-0 top-12 w-80 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 space-y-3 z-50">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-xs font-semibold text-slate-200">Alertas Recentes ({alerts.length})</span>
+                <span className="text-xs font-semibold text-slate-200">Alertas de Atenção ({actionableAlerts.length})</span>
                 <button 
                   onClick={() => {
                     setCurrentTab('alerts');
@@ -281,7 +283,7 @@ export function Topbar({
                 </div>
               ) : (
                 <div className="text-center py-6 text-xs text-slate-500">
-                  Nenhum alerta pendente. Bom trabalho!
+                  Nenhum alerta de atenção no momento. Informativos ficam na central.
                 </div>
               )}
             </div>

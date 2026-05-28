@@ -15,6 +15,14 @@ export interface CommercialAlert {
   created_at: string;
 }
 
+export function isActionableAlert(alert: CommercialAlert): boolean {
+  return alert.severity === 'high' || alert.severity === 'medium';
+}
+
+export function getActionableAlerts(alerts: CommercialAlert[]): CommercialAlert[] {
+  return alerts.filter(isActionableAlert);
+}
+
 export function generateAlerts(): CommercialAlert[] {
   const alerts: CommercialAlert[] = [];
   const customers = db.getCustomers();
