@@ -62,6 +62,20 @@ function App() {
     }
   };
 
+  // Wipe database callback
+  const handleWipeDatabase = () => {
+    if (confirm("ATENÇÃO: Deseja apagar todos os dados permanentemente? O aplicativo ficará zerado, pronto para cadastrar dados reais de produção.")) {
+      db.wipeDatabase();
+      setSelectedCustomerId(null);
+      setSelectedProductId(null);
+      setSelectedOrderId(null);
+      setActiveReviewInvoice(null);
+      setCurrentTab('dashboard');
+      refreshAlerts();
+      alert("Banco de dados completamente limpo e pronto para produção.");
+    }
+  };
+
   // Review & Save callbacks
   const handleSaveReviewedInvoice = (finalInvoice: NormalizedInvoice) => {
     try {
@@ -174,6 +188,7 @@ function App() {
           setUserRole={handleRoleChange}
           alertsCount={alerts.length}
           onResetDB={handleResetDatabase}
+          onWipeDB={handleWipeDatabase}
         />
       </div>
 

@@ -169,8 +169,14 @@ function saveToStorage<T>(key: string, value: T): void {
 
 // Generate premium mock data if localStorage is empty
 function checkAndInitializeMockData() {
+  const isInitialized = localStorage.getItem('ubbe_track_db_initialized');
+  if (isInitialized === 'true') return; // User already initialized (either mock seeded or database wiped clean)
+
   const check = localStorage.getItem(STORAGE_KEYS.ORDERS);
-  if (check && JSON.parse(check).length > 0) return; // already initialized
+  if (check && JSON.parse(check).length > 0) {
+    localStorage.setItem('ubbe_track_db_initialized', 'true');
+    return;
+  }
 
   console.log("Initializing database with realistic mock data...");
 
@@ -672,6 +678,7 @@ function checkAndInitializeMockData() {
   saveToStorage(STORAGE_KEYS.PRICE_HISTORY, priceHistory);
   saveToStorage(STORAGE_KEYS.UPLOADS, uploads);
   saveToStorage(STORAGE_KEYS.USER_ROLE, 'admin');
+  localStorage.setItem('ubbe_track_db_initialized', 'true');
 }
 
 // Call check and initialize immediately
@@ -1041,6 +1048,18 @@ export const db = {
     localStorage.removeItem(STORAGE_KEYS.ORDER_ITEMS);
     localStorage.removeItem(STORAGE_KEYS.PRICE_HISTORY);
     localStorage.removeItem(STORAGE_KEYS.UPLOADS);
+    localStorage.removeItem('ubbe_track_db_initialized');
     checkAndInitializeMockData();
+  },
+
+  // Wipe database completely clean (for real production use)
+  wipeDatabase(): void {
+    localStorage.removeItem(STORAGE_KEYS.CUSTOMERS);
+    localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
+    localStorage.removeItem(STORAGE_KEYS.ORDERS);
+    localStorage.removeItem(STORAGE_KEYS.ORDER_ITEMS);
+    localStorage.removeItem(STORAGE_KEYS.PRICE_HISTORY);
+    localStorage.removeItem(STORAGE_KEYS.UPLOADS);
+    localStorage.setItem('ubbe_track_db_initialized', 'true');
   }
 };

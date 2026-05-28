@@ -23,6 +23,7 @@ interface SidebarProps {
   setUserRole: (role: UserRole) => void;
   alertsCount: number;
   onResetDB: () => void;
+  onWipeDB: () => void;
 }
 
 export function Sidebar({ 
@@ -31,7 +32,8 @@ export function Sidebar({
   userRole, 
   setUserRole,
   alertsCount,
-  onResetDB
+  onResetDB,
+  onWipeDB
 }: SidebarProps) {
 
   const navItems = [
@@ -126,13 +128,21 @@ export function Sidebar({
         </div>
 
         {/* Developer Actions */}
-        <button
-          onClick={onResetDB}
-          className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 border border-slate-800 hover:bg-slate-800/50 hover:border-slate-700 text-xs font-medium rounded-lg text-slate-400 hover:text-slate-200 transition-all"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span>Resetar Base (Dados Mock)</span>
-        </button>
+        <div className="mt-3 space-y-2">
+          <button
+            onClick={onResetDB}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-slate-800 hover:bg-slate-800/50 hover:border-slate-700 text-xs font-medium rounded-lg text-slate-400 hover:text-slate-200 transition-all"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Resetar com Dados Demo</span>
+          </button>
+          <button
+            onClick={onWipeDB}
+            className="w-full flex items-center justify-center gap-2 px-3 py-1.5 border border-rose-950/40 bg-rose-950/10 hover:bg-rose-950/20 text-rose-450 hover:text-rose-350 text-[10px] font-semibold rounded-lg transition-all"
+          >
+            <span>Limpar Banco (Produção)</span>
+          </button>
+        </div>
       </div>
     </aside>
   );
