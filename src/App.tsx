@@ -91,7 +91,10 @@ function App() {
   // Review & Save callbacks
   const handleSaveReviewedInvoice = (finalInvoice: NormalizedInvoice) => {
     try {
-      // 1. Save upload entry
+      // 1. Import elements
+      const newOrder = db.importInvoice(finalInvoice);
+
+      // 2. Save upload entry only after the import succeeds
       db.saveUpload({
         id: `upl-${finalInvoice.id}`,
         file_name: finalInvoice.source_file_name,
@@ -101,9 +104,6 @@ function App() {
         extracted_data: finalInvoice,
         created_at: new Date().toISOString()
       });
-
-      // 2. Import elements
-      const newOrder = db.importInvoice(finalInvoice);
 
       // 3. Continue queued XML reviews or finish
       refreshAlerts();
@@ -238,6 +238,7 @@ function App() {
               invoice={activeReviewInvoice}
               onSave={handleSaveReviewedInvoice}
               onCancel={handleCancelReview}
+              reviewQueueCount={reviewQueue.length}
             />
           ) : (
             renderTabContent()

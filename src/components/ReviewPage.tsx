@@ -25,9 +25,16 @@ interface ReviewPageProps {
   invoice: NormalizedInvoice;
   onSave: (finalInvoice: NormalizedInvoice) => void;
   onCancel: () => void;
+  reviewQueueCount?: number;
 }
 
 type ReviewItem = NormalizedInvoice['items'][number];
+type ReviewValidationIssue = {
+  key: string;
+  itemIndex?: number;
+  message: string;
+  severity: 'error' | 'warning';
+};
 
 function toNumber(value: unknown): number {
   const parsed = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
@@ -40,8 +47,16 @@ function normalizeReviewItem(item: ReviewItem): ReviewItem {
   const rawUnits = isPackaging ? toNumber(item.units_per_package) : 1;
   const unitsPerPackage = isPackaging ? rawUnits : 1;
   const safeUnits = unitsPerPackage > 0 ? unitsPerPackage : 1;
-  const commercialQuantity = toNumber(item.commercial_quantity);
-  const commercialUnitPrice = toNumber(item.commercial_unit_price);
+  const commercialQuantity = toNumber(item.commercial_quantity) > 0
+    ? toNumber(item.commercial_quantity)
+    : toNumber(item.qTrib);
+  const commercialUnitPrice = toNumber(item.commercial_unit_price) > 0
+    ? toNumber(item.commercial_unit_price)
+    : toNumber(item.vUnTrib);
+  const rawCommercialTotal = toNumber(item.commercial_total_price);
+  const commercialTotalPrice = rawCommercialTotal > 0
+    ? rawCommercialTotal
+    : roundAmount(commercialQuantity * commercialUnitPrice);
   const packagingRequiresReview = isPackaging && unitsPerPackage <= 1;
 
   return {
@@ -49,7 +64,7 @@ function normalizeReviewItem(item: ReviewItem): ReviewItem {
     commercial_unit: commercialUnit,
     commercial_quantity: commercialQuantity,
     commercial_unit_price: commercialUnitPrice,
-    commercial_total_price: roundAmount(toNumber(item.commercial_total_price)),
+    commercial_total_price: roundAmount(commercialTotalPrice),
     units_per_package: unitsPerPackage,
     internal_unit: item.internal_unit || detectBaseUnit(commercialUnit),
     internal_quantity: calculateInternalQuantity(commercialQuantity, safeUnits),
@@ -60,7 +75,11 @@ function normalizeReviewItem(item: ReviewItem): ReviewItem {
   };
 }
 
-export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
+function getItemLabel(item: ReviewItem, index: number): string {
+  return `Item ${index + 1}${item.description ? ` - ${item.description}` : ''}`;
+}
+
+export function ReviewPage({ invoice, onSave, onCancel, reviewQueueCount = 0 }: ReviewPageProps) {
   const [customerName, setCustomerName] = useState(invoice.customer_name);
   const [customerDocument, setCustomerDocument] = useState(invoice.customer_document || '');
   const [customerCity, setCustomerCity] = useState(invoice.customer_city || '');
@@ -89,15 +108,77 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
     [items]
   );
 
-  const hasBlockingRows = useMemo(
-    () => items.some(item =>
-      toNumber(item.commercial_quantity) <= 0 ||
-      toNumber(item.commercial_unit_price) <= 0 ||
-      toNumber(item.commercial_total_price) <= 0 ||
-      (detectPackagingUnit(item.commercial_unit) && toNumber(item.units_per_package) <= 1)
-    ),
-    [items]
-  );
+  const validationIssues = useMemo(() => {
+    const issues: ReviewValidationIssue[] = [];
+
+    if (!customerName.trim()) {
+      issues.push({
+        key: 'customer',
+        message: 'Cliente vazio',
+        severity: 'error'
+      });
+    }
+
+    if (items.length === 0) {
+      issues.push({
+        key: 'items-empty',
+        message: 'A nota precisa ter pelo menos um item',
+        severity: 'error'
+      });
+    }
+
+    items.forEach((item, index) => {
+      const itemLabel = getItemLabel(item, index);
+      const expectedTotal = roundAmount(toNumber(item.commercial_quantity) * toNumber(item.commercial_unit_price));
+      const totalDifference = Math.abs(expectedTotal - toNumber(item.commercial_total_price));
+
+      if (toNumber(item.commercial_quantity) <= 0) {
+        issues.push({
+          key: `quantity-${index}`,
+          itemIndex: index,
+          message: `${itemLabel}: quantidade comercial precisa ser maior que zero`,
+          severity: 'error'
+        });
+      }
+      if (toNumber(item.commercial_unit_price) <= 0) {
+        issues.push({
+          key: `unit-price-${index}`,
+          itemIndex: index,
+          message: `${itemLabel}: preço comercial precisa ser maior que zero`,
+          severity: 'error'
+        });
+      }
+      if (toNumber(item.commercial_total_price) <= 0) {
+        issues.push({
+          key: `total-${index}`,
+          itemIndex: index,
+          message: `${itemLabel}: total comercial precisa ser maior que zero`,
+          severity: 'error'
+        });
+      }
+      if (detectPackagingUnit(item.commercial_unit) && toNumber(item.units_per_package) <= 1) {
+        issues.push({
+          key: `package-${index}`,
+          itemIndex: index,
+          message: `${itemLabel}: informe quantas unidades existem dentro da embalagem`,
+          severity: 'error'
+        });
+      }
+      if (totalDifference > 0.05) {
+        issues.push({
+          key: `total-warning-${index}`,
+          itemIndex: index,
+          message: `${itemLabel}: total comercial difere de quantidade x preço`,
+          severity: 'warning'
+        });
+      }
+    });
+
+    return issues;
+  }, [customerName, items]);
+
+  const blockingIssues = validationIssues.filter(issue => issue.severity === 'error');
+  const hasBlockingRows = blockingIssues.length > 0;
 
   const handleItemChange = (index: number, field: keyof ReviewItem, value: ReviewItem[keyof ReviewItem]) => {
     setItems(prev => prev.map((item, idx) => {
@@ -200,28 +281,10 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
   const totalValue = Math.max(0, itemsTotal - discountAmount + shippingAmount);
 
   const handleSaveClick = () => {
-    if (!customerName.trim()) {
-      alert('Por favor, preencha o nome do cliente.');
-      return;
-    }
-    if (items.length === 0) {
-      alert('O pedido deve conter pelo menos um item.');
-      return;
-    }
-    if (items.some(item => toNumber(item.commercial_quantity) <= 0)) {
-      alert('Não é permitido salvar pedido com quantidade comercial menor ou igual a zero.');
-      return;
-    }
-    if (items.some(item => toNumber(item.commercial_unit_price) <= 0)) {
-      alert('Não é permitido salvar pedido com preço comercial menor ou igual a zero.');
-      return;
-    }
-    if (items.some(item => toNumber(item.commercial_total_price) <= 0)) {
-      alert('Não é permitido salvar pedido com total comercial menor ou igual a zero.');
-      return;
-    }
-    if (invalidPackageItems.length > 0) {
-      alert(PACKAGING_REVIEW_WARNING);
+    if (blockingIssues.length > 0) {
+      const visibleIssues = blockingIssues.slice(0, 6).map(issue => `- ${issue.message}`).join('\n');
+      const suffix = blockingIssues.length > 6 ? `\n- mais ${blockingIssues.length - 6} pendência(s)` : '';
+      alert(`Corrija as pendências antes de salvar:\n${visibleIssues}${suffix}`);
       return;
     }
 
@@ -284,7 +347,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-12 max-w-7xl mx-auto">
+    <div className="space-y-6 animate-fade-in pb-24 max-w-[1680px] mx-auto">
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 glass-panel rounded-2xl p-5">
         <div>
           <h2 className="text-xl font-bold font-outfit text-white tracking-wide">Revise os dados do pedido antes de salvar</h2>
@@ -303,11 +366,17 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
               </span>
             </div>
           )}
+          {reviewQueueCount > 0 && (
+            <div className="mt-3 inline-flex items-center gap-2 text-[11px] text-cyan-200 bg-cyan-500/10 border border-cyan-500/25 rounded-xl px-3 py-1.5">
+              <FileText className="w-3.5 h-3.5" />
+              <span>Fila de XMLs: ao salvar esta nota, o próximo arquivo abre automaticamente ({reviewQueueCount} restante(s)).</span>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="space-y-6 lg:col-span-1">
+      <div className="grid grid-cols-1 2xl:grid-cols-[320px_minmax(0,1fr)] gap-5">
+        <div className="space-y-5">
           <div className="glass-panel rounded-2xl p-5 space-y-4">
             <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2 border-b border-slate-800 pb-2">
               <User className="w-4 h-4 text-brand-500" />
@@ -437,7 +506,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
           </div>
         </div>
 
-        <div className="lg:col-span-3 space-y-4">
+        <div className="space-y-4 min-w-0">
           <div className="glass-panel rounded-2xl p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
               <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
@@ -471,6 +540,39 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
               </div>
             )}
 
+            {validationIssues.length > 0 && (
+              <div className="rounded-xl border border-slate-800 bg-slate-950/45 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  Pendências da revisão
+                </div>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                  {validationIssues.slice(0, 8).map(issue => (
+                    <button
+                      key={issue.key}
+                      onClick={() => {
+                        if (issue.itemIndex !== undefined) {
+                          document.getElementById(`review-item-${issue.itemIndex}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                      }}
+                      className={`text-left text-[11px] leading-relaxed rounded-lg border px-3 py-2 ${
+                        issue.severity === 'error'
+                          ? 'bg-rose-500/10 border-rose-500/25 text-rose-200'
+                          : 'bg-amber-500/10 border-amber-500/25 text-amber-200'
+                      }`}
+                    >
+                      {issue.message}
+                    </button>
+                  ))}
+                </div>
+                {validationIssues.length > 8 && (
+                  <div className="text-[10px] text-slate-500">
+                    Mais {validationIssues.length - 8} pendência(s) nesta nota.
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-3">
               {items.map((item, idx) => {
                 const matchedProd = findProductForItem(item);
@@ -482,6 +584,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                 return (
                   <div
                     key={idx}
+                    id={`review-item-${idx}`}
                     className={`rounded-xl border p-4 ${
                       needsConversion
                         ? 'border-amber-500/60 bg-amber-500/10'
@@ -491,13 +594,13 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3 mb-4">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="text-[10px] text-slate-500 uppercase font-bold">Item {idx + 1}</div>
                         <input
                           type="text"
                           value={item.description}
                           onChange={(e) => handleItemChange(idx, 'description', e.target.value)}
-                          className="mt-1 w-full min-w-[260px] bg-slate-950 border border-slate-800 focus:border-brand-500 rounded-lg px-3 py-2 text-sm text-white focus:outline-none font-semibold"
+                          className="mt-1 w-full min-w-0 bg-slate-950 border border-slate-800 focus:border-brand-500 rounded-lg px-3 py-2 text-sm text-white focus:outline-none font-semibold"
                         />
                         {item.packaging_warning && (
                           <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-300 font-semibold">
@@ -516,7 +619,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.35fr] gap-4">
+                    <div className="grid grid-cols-1 xl:grid-cols-[minmax(300px,0.85fr)_minmax(0,1.4fr)] gap-4">
                       <div className="space-y-3">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                           <label className="space-y-1">
@@ -573,12 +676,12 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                         </label>
                       </div>
 
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
                         <div className="rounded-lg border border-slate-800 bg-slate-900/35 p-3 space-y-3">
                           <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Comercial da nota</div>
                           <div className="grid grid-cols-2 gap-2">
                             <label className="space-y-1">
-                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Unidade</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Un. com.</span>
                               <input
                                 type="text"
                                 value={item.commercial_unit || ''}
@@ -590,7 +693,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                               />
                             </label>
                             <label className="space-y-1">
-                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Quantidade</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Qtd. com.</span>
                               <input
                                 type="number"
                                 step="any"
@@ -601,7 +704,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                             </label>
                             <label className="space-y-1 col-span-2">
                               <span className="text-[10px] text-slate-500 uppercase font-semibold">
-                                {isPackaging ? 'Preço da embalagem' : 'Preço unitário comercial'}
+                                {isPackaging ? 'Preço embalagem' : 'Preço unit. com.'}
                               </span>
                               <input
                                 type="number"
@@ -634,7 +737,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                         <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 space-y-3">
                           <div className="text-[10px] text-amber-300 uppercase font-bold tracking-wide">Conversão da embalagem</div>
                           <label className="space-y-1 block">
-                            <span className="text-[10px] text-slate-500 uppercase font-semibold">Unidades dentro da embalagem</span>
+                            <span className="text-[10px] text-slate-500 uppercase font-semibold">Un./emb.</span>
                             <input
                               type="number"
                               step="1"
@@ -650,7 +753,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                             />
                           </label>
                           <div className="text-[11px] text-slate-400 leading-relaxed">
-                            Quantidade interna = quantidade comercial x unidades por embalagem.
+                            Qtd. interna = qtd. comercial x unidades por embalagem.
                           </div>
                         </div>
 
@@ -658,13 +761,13 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                           <div className="text-[10px] text-emerald-300 uppercase font-bold tracking-wide">Resultado interno</div>
                           <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
-                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Quantidade interna</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Qtd. int.</span>
                               <div className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 text-sm text-emerald-300 text-right font-bold">
                                 {toNumber(item.internal_quantity)}
                               </div>
                             </div>
                             <label className="space-y-1">
-                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Unidade interna</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Un. int.</span>
                               <input
                                 type="text"
                                 value={item.internal_unit || 'UN'}
@@ -674,7 +777,7 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
                               />
                             </label>
                             <div className="space-y-1 col-span-2">
-                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Preço por unidade interna</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-semibold">Preço interno</span>
                               <div className="w-full bg-slate-950/80 border border-emerald-500/40 rounded-lg px-3 py-2 text-base text-emerald-300 text-right font-bold">
                                 {formatCurrency(toNumber(item.internal_unit_price))}
                               </div>
@@ -691,24 +794,41 @@ export function ReviewPage({ invoice, onSave, onCancel }: ReviewPageProps) {
         </div>
       </div>
 
-      <div className="flex justify-end items-center gap-3 border-t border-slate-800/80 pt-6">
-        <button
-          onClick={onCancel}
-          className="px-4 py-2 border border-slate-800 hover:bg-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200 rounded-xl transition-all"
-        >
-          Cancelar Importação
-        </button>
-        <button
-          onClick={handleSaveClick}
-          className={`flex items-center gap-1.5 px-5 py-2.5 text-white rounded-xl text-xs font-semibold shadow-lg transition-all hover:translate-y-[-1px] ${
-            hasBlockingRows
-              ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/10'
-              : 'bg-brand-600 hover:bg-brand-500 shadow-brand-600/10'
-          }`}
-        >
-          <Check className="w-4 h-4" />
-          <span>Salvar Pedido na Base</span>
-        </button>
+      <div className="sticky bottom-0 z-20 rounded-2xl border border-slate-800 bg-slate-950/95 backdrop-blur px-4 py-3 shadow-2xl shadow-slate-950/60">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-white">
+              Total da nota: {formatCurrency(totalValue)}
+            </div>
+            <div className={`mt-1 text-[11px] ${hasBlockingRows ? 'text-amber-300' : 'text-slate-400'}`}>
+              {hasBlockingRows
+                ? `${blockingIssues.length} pendência(s) bloqueando o salvamento. Clique nas pendências acima para ir ao item.`
+                : reviewQueueCount > 0
+                  ? `Tudo certo nesta nota. Depois de salvar, ${reviewQueueCount === 1 ? 'mais 1 XML será aberto' : `mais ${reviewQueueCount} XMLs serão abertos`} para revisão.`
+                  : 'Tudo certo para salvar esta nota na base.'}
+            </div>
+          </div>
+
+          <div className="flex justify-end items-center gap-3 shrink-0">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 border border-slate-800 hover:bg-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200 rounded-xl transition-all"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSaveClick}
+              className={`flex items-center gap-1.5 px-5 py-2.5 text-white rounded-xl text-xs font-semibold shadow-lg transition-all hover:translate-y-[-1px] ${
+                hasBlockingRows
+                  ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/10'
+                  : 'bg-brand-600 hover:bg-brand-500 shadow-brand-600/10'
+              }`}
+            >
+              <Check className="w-4 h-4" />
+              <span>{reviewQueueCount > 0 ? 'Salvar e abrir próximo XML' : 'Salvar Nota na Base'}</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
