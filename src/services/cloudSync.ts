@@ -14,6 +14,15 @@ const STORAGE_KEYS = [
   'precomap_dismissed_alert_ids'
 ];
 
+const BUSINESS_STORAGE_KEYS = [
+  'precomap_customers',
+  'precomap_products',
+  'precomap_orders',
+  'precomap_order_items',
+  'precomap_price_history',
+  'precomap_uploads'
+];
+
 export interface CloudSession {
   access_token: string;
   refresh_token: string | null;
@@ -22,6 +31,14 @@ export interface CloudSession {
     id: string;
     email: string | null;
   };
+}
+
+export interface CloudSyncSummary {
+  localRecords: number;
+  remoteRecords: number;
+  mergedRecords: number;
+  restored: boolean;
+  pushed: boolean;
 }
 
 let backupTimer: number | null = null;
@@ -72,6 +89,122 @@ function collectSnapshot(): Record<string, unknown> {
   }, {});
 }
 
+function countBusinessRecords(snapshot: Record<string, unknown>): number {
+  return BUSINESS_STORAGE_KEYS.reduce((count, key) => {
+    const value = snapshot[key];
+    return count + (Array.isArray(value) ? value.length : 0);
+  }, 0);
+}
+
+function getRecordDate(value: unknown): number {
+  if (!value || typeof value !== 'object') return 0;
+  const record = value as Record<string, unknown>;
+  const rawDate = record.updated_at || record.created_at || record.date || record.issue_date;
+  if (typeof rawDate !== 'string') return 0;
+  const timestamp = Date.parse(rawDate);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getMergeKey(value: unknown, index: number): string {
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (typeof record.id === 'string' && record.id) return `id:${record.id}`;
+    if (typeof record.invoice_key === 'string' && record.invoice_key) return `invoice:${record.invoice_key}`;
+  }
+
+  try {
+    return `raw:${JSON.stringify(value)}`;
+  } catch {
+    return `index:${index}`;
+  }
+}
+
+function mergeEntityArray(remoteValue: unknown, localValue: unknown): unknown[] {
+  const remoteItems = Array.isArray(remoteValue) ? remoteValue : [];
+  const localItems = Array.isArray(localValue) ? localValue : [];
+  const merged = new Map<string, unknown>();
+  const order: string[] = [];
+
+  [...remoteItems, ...localItems].forEach((item, index) => {
+    const key = getMergeKey(item, index);
+    const current = merged.get(key);
+
+    if (!current) {
+      order.push(key);
+      merged.set(key, item);
+      return;
+    }
+
+    if (getRecordDate(item) >= getRecordDate(current)) {
+      merged.set(key, item);
+    }
+  });
+
+  return order.map(key => merged.get(key));
+}
+
+function mergePrimitiveArray(remoteValue: unknown, localValue: unknown): unknown[] {
+  const merged = new Set<unknown>();
+  if (Array.isArray(remoteValue)) remoteValue.forEach(value => merged.add(value));
+  if (Array.isArray(localValue)) localValue.forEach(value => merged.add(value));
+  return Array.from(merged);
+}
+
+function mergeSnapshots(remoteSnapshot: Record<string, unknown>, localSnapshot: Record<string, unknown>): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+
+  STORAGE_KEYS.forEach(key => {
+    const remoteValue = remoteSnapshot[key];
+    const localValue = localSnapshot[key];
+
+    if (key === 'precomap_dismissed_alert_ids') {
+      merged[key] = mergePrimitiveArray(remoteValue, localValue);
+      return;
+    }
+
+    if (Array.isArray(remoteValue) || Array.isArray(localValue)) {
+      merged[key] = mergeEntityArray(remoteValue, localValue);
+      return;
+    }
+
+    if (key === 'precomap_user_role' && localValue) {
+      merged[key] = localValue;
+      return;
+    }
+
+    merged[key] = remoteValue ?? localValue ?? null;
+  });
+
+  return merged;
+}
+
+function writeSnapshotToStorage(snapshot: Record<string, unknown>): void {
+  isRestoringSnapshot = true;
+  try {
+    STORAGE_KEYS.forEach(key => {
+      if (Object.prototype.hasOwnProperty.call(snapshot, key)) {
+        writeStorageValue(key, snapshot[key]);
+      }
+    });
+  } finally {
+    isRestoringSnapshot = false;
+  }
+}
+
+async function fetchCloudSnapshot(session: CloudSession): Promise<Record<string, unknown> | null> {
+  const response = await fetch(
+    `${SUPABASE_URL}/rest/v1/${SNAPSHOT_TABLE}?select=data&user_id=eq.${encodeURIComponent(session.user.id)}&limit=1`,
+    { headers: authHeaders(session) }
+  );
+
+  if (!response.ok) {
+    throw new Error('Nao foi possivel carregar o banco remoto.');
+  }
+
+  const rows = await response.json();
+  return (rows?.[0]?.data as Record<string, unknown> | undefined) || null;
+}
+
 export function getCurrentSession(): CloudSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -120,7 +253,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
   };
 
   saveSession(session);
-  await restoreCloudSnapshot(session);
+  await syncCloudSnapshot(session);
   return session;
 }
 
@@ -156,8 +289,68 @@ export async function restoreCloudSnapshot(session = getCurrentSession()): Promi
   }
 }
 
-export async function pushCloudSnapshot(session = getCurrentSession()): Promise<void> {
-  if (!isCloudConfigured() || !session || isRestoringSnapshot) return;
+export async function syncCloudSnapshot(session = getCurrentSession()): Promise<CloudSyncSummary> {
+  const emptySummary: CloudSyncSummary = {
+    localRecords: 0,
+    remoteRecords: 0,
+    mergedRecords: 0,
+    restored: false,
+    pushed: false
+  };
+
+  if (!isCloudConfigured() || !session) return emptySummary;
+
+  const localSnapshot = collectSnapshot();
+  const localRecords = countBusinessRecords(localSnapshot);
+  const remoteSnapshot = await fetchCloudSnapshot(session);
+  const remoteRecords = remoteSnapshot ? countBusinessRecords(remoteSnapshot) : 0;
+
+  if (remoteSnapshot && remoteRecords > 0) {
+    const mergedSnapshot = mergeSnapshots(remoteSnapshot, localSnapshot);
+    const mergedRecords = countBusinessRecords(mergedSnapshot);
+    writeSnapshotToStorage(mergedSnapshot);
+
+    const changedRemote = JSON.stringify(mergedSnapshot) !== JSON.stringify(remoteSnapshot);
+    const pushed = changedRemote ? await pushCloudSnapshot(session, mergedSnapshot) : false;
+
+    return {
+      localRecords,
+      remoteRecords,
+      mergedRecords,
+      restored: true,
+      pushed
+    };
+  }
+
+  if (localRecords > 0) {
+    const pushed = await pushCloudSnapshot(session, localSnapshot);
+    return {
+      localRecords,
+      remoteRecords,
+      mergedRecords: localRecords,
+      restored: false,
+      pushed
+    };
+  }
+
+  if (remoteSnapshot) {
+    writeSnapshotToStorage(remoteSnapshot);
+  }
+
+  return {
+    localRecords,
+    remoteRecords,
+    mergedRecords: remoteRecords,
+    restored: Boolean(remoteSnapshot),
+    pushed: false
+  };
+}
+
+export async function pushCloudSnapshot(
+  session = getCurrentSession(),
+  snapshot = collectSnapshot()
+): Promise<boolean> {
+  if (!isCloudConfigured() || !session || isRestoringSnapshot) return false;
 
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${SNAPSHOT_TABLE}?on_conflict=user_id`, {
     method: 'POST',
@@ -167,14 +360,17 @@ export async function pushCloudSnapshot(session = getCurrentSession()): Promise<
     },
     body: JSON.stringify({
       user_id: session.user.id,
-      data: collectSnapshot(),
+      data: snapshot,
       updated_at: new Date().toISOString()
     })
   });
 
   if (!response.ok) {
     console.warn('Falha ao sincronizar banco remoto', await response.text());
+    return false;
   }
+
+  return true;
 }
 
 export function scheduleCloudBackup(): void {

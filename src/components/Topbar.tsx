@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Calendar, FileText, Package, Users, X, Menu, LogOut } from 'lucide-react';
+import { Search, Bell, Calendar, FileText, Package, Users, X, Menu, LogOut, CloudUpload } from 'lucide-react';
 import { db } from '../services/db';
 import type { Customer, Product, Order } from '../services/db';
 import { getActionableAlerts } from '../services/alerts';
@@ -16,6 +16,7 @@ interface TopbarProps {
   onToggleMobileMenu?: () => void;
   userLabel: string;
   onSignOut: () => void;
+  onSyncNow?: () => void | Promise<void>;
 }
 
 export function Topbar({ 
@@ -27,7 +28,8 @@ export function Topbar({
   onDismissAlert,
   onToggleMobileMenu,
   userLabel,
-  onSignOut
+  onSignOut,
+  onSyncNow
 }: TopbarProps) {
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -307,6 +309,16 @@ export function Topbar({
             </div>
           )}
         </div>
+
+        {onSyncNow && (
+          <button
+            onClick={onSyncNow}
+            className="p-2 border border-slate-800 hover:bg-slate-800/50 hover:text-slate-100 rounded-xl transition-all"
+            title="Sincronizar dados deste dispositivo"
+          >
+            <CloudUpload className="w-4 h-4" />
+          </button>
+        )}
 
         {/* User Card */}
         <div className="flex items-center gap-3 pl-2 sm:pl-4 border-l border-slate-800/80">

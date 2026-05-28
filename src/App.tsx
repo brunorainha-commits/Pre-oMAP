@@ -18,7 +18,7 @@ import type { UserRole, NormalizedInvoice } from './services/db';
 import { dismissAlert, dismissAlerts, generateAlerts, getActionableAlerts } from './services/alerts';
 import type { CommercialAlert } from './services/alerts';
 import { applyProductMemoryToInvoice, detectPackagingUnit } from './services/normalizer';
-import { getCurrentSession, isCloudConfigured, restoreCloudSnapshot, signOutCloud, type CloudSession } from './services/cloudSync';
+import { getCurrentSession, isCloudConfigured, signOutCloud, syncCloudSnapshot, type CloudSession } from './services/cloudSync';
 
 type AuthState = 'checking' | 'login' | 'authenticated' | 'local';
 
@@ -40,6 +40,7 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [authState, setAuthState] = useState<AuthState>('checking');
   const [cloudSession, setCloudSession] = useState<CloudSession | null>(null);
+  const [dataSyncVersion, setDataSyncVersion] = useState(0);
   
   // Selection states (for drill down navigation)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -65,7 +66,7 @@ function App() {
       const session = getCurrentSession();
       if (isCloudConfigured() && session) {
         try {
-          await restoreCloudSnapshot(session);
+          await syncCloudSnapshot(session);
           setCloudSession(session);
           setAuthState('authenticated');
         } catch {
@@ -197,6 +198,29 @@ function App() {
     signOutCloud();
     setCloudSession(null);
     setAuthState('login');
+  };
+
+  const handleSyncNow = async () => {
+    try {
+      const summary = await syncCloudSnapshot();
+      setUserRole(db.getUserRole());
+      refreshAlerts();
+      setDataSyncVersion(version => version + 1);
+
+      if (summary.pushed) {
+        alert(`Sincronizado com a nuvem. ${summary.mergedRecords} registros prontos para abrir em outros dispositivos.`);
+        return;
+      }
+
+      if (summary.restored) {
+        alert(`Dados da nuvem carregados. ${summary.mergedRecords} registros disponiveis neste dispositivo.`);
+        return;
+      }
+
+      alert('Nenhum dado local encontrado para sincronizar neste dispositivo.');
+    } catch (err: any) {
+      alert(`Nao foi possivel sincronizar agora: ${err.message || err}`);
+    }
   };
 
 
@@ -385,6 +409,7 @@ function App() {
             onToggleMobileMenu={() => setIsMobileMenuOpen(true)}
             userLabel={cloudSession?.user.email || (authState === 'local' ? 'Modo local' : 'Operações Internas')}
             onSignOut={handleSignOut}
+            onSyncNow={authState === 'authenticated' ? handleSyncNow : undefined}
           />
         </div>
 
@@ -399,7 +424,9 @@ function App() {
               reviewQueueCount={reviewQueue.length}
             />
           ) : (
-            renderTabContent()
+            <div key={`${currentTab}-${dataSyncVersion}`}>
+              {renderTabContent()}
+            </div>
           )}
         </main>
       </div>
