@@ -376,12 +376,34 @@ export async function parsePdfInvoice(pdfBuffer: ArrayBuffer, fileName: string):
   }
 
   // G. Extract Items
-  // Table item parsing: look for lines that resemble a product list row
-  // Typically: [Code] [Description] [NCM] [CFOP] [Qty] [Unit] [Price] [Total]
-  // We can look for lines that contain:
-  // - A measurement unit (UN, SC, KG, GL, PCT, CX, M, L)
-  // - A quantity (numeric)
-  // - Unit price and total price (floats)
+  // Detect column order from raw text flow (e.g., if price header comes before quantity header)
+  let priceBeforeQty = false;
+  const lowerText = cleanText.toLowerCase();
+  const priceKeywords = ['val.unit', 'valor unit', 'vl.unit', 'v.unit', 'preco unit', 'val.un', 'valor un', 'vl.un', 'v.un', 'preco un', 'unitario'];
+  const qtyKeywords = ['quant', 'qtd', 'qde', 'quantidade'];
+  
+  let pricePos = -1;
+  let qtyPos = -1;
+  
+  for (const kw of priceKeywords) {
+    const pos = lowerText.indexOf(kw);
+    if (pos !== -1) {
+      pricePos = pos;
+      break;
+    }
+  }
+  for (const kw of qtyKeywords) {
+    const pos = lowerText.indexOf(kw);
+    if (pos !== -1) {
+      qtyPos = pos;
+      break;
+    }
+  }
+  
+  if (pricePos !== -1 && qtyPos !== -1 && pricePos < qtyPos) {
+    priceBeforeQty = true;
+  }
+
   const items: any[] = [];
   const units = ['un', 'sc', 'kg', 'gl', 'pct', 'cx', 'm', 'l', 'fd', 'lt', 'und'];
   
@@ -551,6 +573,42 @@ export async function parsePdfInvoice(pdfBuffer: ArrayBuffer, fileName: string):
 
         const description = filteredDescTokens.join(' ').trim();
         if (description.length > 2 && !description.toLowerCase().includes('valor') && !description.toLowerCase().includes('total')) {
+          let val1 = itemQty; // from qIdx (left)
+          let val2 = itemPrice; // from pIdx (right)
+          
+          let finalQty = val1;
+          let finalPrice = val2;
+          
+          if (priceBeforeQty) {
+            finalPrice = val1;
+            finalQty = val2;
+          } else {
+            const tokenLeft = cleanTokens[qtyIdx];
+            const tokenRight = cleanTokens[priceIdx];
+            
+            const hasR$Left = /r\$/i.test(tokenLeft);
+            const hasR$Right = /r\$/i.test(tokenRight);
+            
+            if (hasR$Left && !hasR$Right) {
+              finalPrice = val1;
+              finalQty = val2;
+            } else if (hasR$Right && !hasR$Left) {
+              finalPrice = val2;
+              finalQty = val1;
+            } else {
+              const isVal1SmallInt = val1 <= 100 && (Number.isInteger(val1) || (val1 * 10) % 10 === 0);
+              const isVal2SmallInt = val2 <= 100 && (Number.isInteger(val2) || (val2 * 10) % 10 === 0);
+              
+              if (isVal1SmallInt && !isVal2SmallInt && val2 > val1) {
+                finalQty = val1;
+                finalPrice = val2;
+              } else if (isVal2SmallInt && !isVal1SmallInt && val1 > val2) {
+                finalQty = val2;
+                finalPrice = val1;
+              }
+            }
+          }
+
           items.push({
             product_code: code,
             barcode: null,
@@ -558,9 +616,9 @@ export async function parsePdfInvoice(pdfBuffer: ArrayBuffer, fileName: string):
             normalized_description: getNormalizedDescription(description),
             ncm,
             cfop,
-            quantity: itemQty,
+            quantity: finalQty,
             unit: extractedUnit,
-            unit_price: itemPrice,
+            unit_price: finalPrice,
             total_price: itemTotal,
             discount: null
           });
